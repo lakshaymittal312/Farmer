@@ -2,12 +2,11 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import connectDB from './config/db.js';
+import farmerProfileRoutes from './routes/farmerProfileRoutes.js';
+import buyerProfileRoutes from './routes/buyerProfileRoutes.js';
 
 // Load environment variables
 dotenv.config();
-
-// Connect to Database
-connectDB();
 
 const app = express();
 
@@ -24,11 +23,35 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Start Server
-const PORT = process.env.PORT || 5000;
+// API Routes
+app.use('/api/farmer-profiles', farmerProfileRoutes);
+app.use('/api/buyer-profiles', buyerProfileRoutes);
 
-const server = app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+// 404 Handler for undefined routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route ${req.originalUrl} not found`,
+  });
 });
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled Error:', err);
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    error: err.message,
+  });
+});
+
+// Connect DB and Start Server if not running in test mode
+if (process.env.NODE_ENV !== 'test') {
+  connectDB();
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+  });
+}
 
 export default app;
