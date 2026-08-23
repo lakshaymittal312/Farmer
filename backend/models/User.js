@@ -37,6 +37,19 @@ const userSchema = new mongoose.Schema(
       default: 'buyer',
       required: true,
     },
+    permissions: {
+      type: [String],
+      default: function () {
+        if (this.role === 'admin') {
+          return ['manage_users', 'manage_products', 'manage_orders'];
+        }
+        return [];
+      },
+    },
+    lastLogin: {
+      type: Date,
+      default: null,
+    },
     profileImage: {
       type: String,
       default: '',
@@ -72,6 +85,14 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Pre-save hook to ensure admin role gets default permissions if permissions array is empty
+userSchema.pre('save', function (next) {
+  if (this.role === 'admin' && (!this.permissions || this.permissions.length === 0)) {
+    this.permissions = ['manage_users', 'manage_products', 'manage_orders'];
+  }
+  next();
+});
 
 const User = mongoose.model('User', userSchema);
 

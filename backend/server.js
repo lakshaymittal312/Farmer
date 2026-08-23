@@ -1,9 +1,12 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import farmerProfileRoutes from './routes/farmerProfileRoutes.js';
 import buyerProfileRoutes from './routes/buyerProfileRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import productRoutes from './routes/productRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -24,8 +27,10 @@ app.get('/api/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/farmer-profiles', farmerProfileRoutes);
 app.use('/api/buyer-profiles', buyerProfileRoutes);
+app.use('/api/products', productRoutes);
 
 // 404 Handler for undefined routes
 app.use((req, res) => {
@@ -45,8 +50,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Connect DB and Start Server if not running in test mode
-if (process.env.NODE_ENV !== 'test') {
+// Connect DB and Start Server if executed directly
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain && process.env.NODE_ENV !== 'test') {
   connectDB();
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
