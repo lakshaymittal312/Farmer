@@ -9,6 +9,8 @@ import FarmerProfile from '../models/FarmerProfile.js';
 import BuyerProfile from '../models/BuyerProfile.js';
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
+import Cart from '../models/Cart.js';
+import Order from '../models/Order.js';
 
 dotenv.config();
 
@@ -80,6 +82,8 @@ async function setup() {
   const existingFarmerProfiles = await FarmerProfile.find({ user: { $in: existingUserIds } });
   const existingFarmerProfileIds = existingFarmerProfiles.map((fp) => fp._id);
 
+  await Cart.deleteMany({ buyer: { $in: existingUserIds } });
+  await Order.deleteMany({ buyer: { $in: existingUserIds } });
   await Product.deleteMany({ farmer: { $in: existingFarmerProfileIds } });
   await FarmerProfile.deleteMany({ user: { $in: existingUserIds } });
   await BuyerProfile.deleteMany({ user: { $in: existingUserIds } });
@@ -830,6 +834,8 @@ async function teardown() {
   const farmerProfiles = await FarmerProfile.find({ user: { $in: uIds } });
   const fpIds = farmerProfiles.map((fp) => fp._id);
 
+  await Cart.deleteMany({ buyer: { $in: uIds } });
+  await Order.deleteMany({ buyer: { $in: uIds } });
   await Product.deleteMany({ farmer: { $in: fpIds } });
   await FarmerProfile.deleteMany({ user: { $in: uIds } });
   await BuyerProfile.deleteMany({ user: { $in: uIds } });
@@ -847,6 +853,531 @@ async function teardown() {
   console.log('MongoDB connection closed.');
 }
 
+async function testCartAPIs() {
+  logSection('CART API TESTS');
+
+  // Ensure active products exist for Cart & Order testing
+  const prod1 = await Product.create({
+    name: 'Organic Wheat Grain',
+    category: category1Id,
+    description: 'Farm fresh organic wheat',
+    price: 500,
+    unit: 'kg',
+    quantityAvailable: 50,
+    images: ['https://example.com/wheat.jpg'],
+    farmer: farmerProfileId,
+    location: { village: 'Kheda', district: 'Ludhiana', state: 'Punjab' },
+    status: 'active',
+  });
+  createdProductId = prod1._id.toString();
+
+  const prod2 = await Product.create({
+    name: 'Fresh Tomatoes',
+    category: category2Id,
+    description: 'Juicy red tomatoes',
+    price: 150,
+    unit: 'kg',
+    quantityAvailable: 30,
+    images: ['https://example.com/tomato.jpg'],
+    farmer: rogueFarmerProfileId,
+    location: { village: 'Rampur', district: 'Amritsar', state: 'Punjab' },
+    status: 'active',
+  });
+  secondProductId = prod2._id.toString();
+
+  // 1. Get empty cart
+  {
+    const res = await fetch(`${BASE_URL}/api/cart`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Cart - Buyer gets empty cart returns 200');
+    assertEqual(json.success, true, 'Cart - Success true');
+    assertEqual(json.cart.items.length, 0, 'Cart - Items array is empty');
+    assertEqual(json.cart.calculatedCartTotal, 0, 'Cart - Dynamic total is 0');
+  }
+
+  // 2. Add valid product
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: createdProductId, quantity: 2 }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Cart - Add valid product returns 201');
+    assertEqual(json.cart.items.length, 1, 'Cart - Item count is 1');
+    assertEqual(json.cart.items[0].quantity, 2, 'Cart - Item quantity is 2');
+    assertEqual(json.cart.items[0].priceAtAdd, 500, 'Cart - priceAtAdd stored correctly');
+  }
+
+  // 3. Add same product again (quantity increase)
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: createdProductId, quantity: 3 }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Cart - Add same product again increases quantity');
+    assertEqual(json.cart.items.length, 1, 'Cart - No duplicate item entries created');
+    assertEqual(json.cart.items[0].quantity, 5, 'Cart - Quantity updated to 5');
+  }
+
+  // 4. Update cart item quantity
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items/${createdProductId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ quantity: 4 }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Cart - Update item quantity returns 200');
+    assertEqual(json.cart.items[0].quantity, 4, 'Cart - Quantity updated to 4');
+  }
+
+  // 5. Invalid product ID
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: 'invalid_id', quantity: 1 }),
+    });
+    assertEqual(res.status, 400, 'Cart - Invalid product ID returns 400');
+  }
+
+  // 6. Non-existing product
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: '507f1f77bcf86cd799439011', quantity: 1 }),
+    });
+    assertEqual(res.status, 404, 'Cart - Non-existing product returns 404');
+  }
+
+  // 7. Quantity = 0
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: createdProductId, quantity: 0 }),
+    });
+    assertEqual(res.status, 400, 'Cart - Quantity = 0 returns 400');
+  }
+
+  // 8. Negative quantity
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: createdProductId, quantity: -5 }),
+    });
+    assertEqual(res.status, 400, 'Cart - Negative quantity returns 400');
+  }
+
+  // 9. Unauthorized role access (Farmer attempting cart add)
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${farmerToken}`,
+      },
+      body: JSON.stringify({ product: createdProductId, quantity: 1 }),
+    });
+    assertEqual(res.status, 403, 'Cart - Farmer role accessing cart returns 403');
+  }
+
+  // 10. Unauthenticated access
+  {
+    const res = await fetch(`${BASE_URL}/api/cart`, {
+      method: 'GET',
+    });
+    assertEqual(res.status, 401, 'Cart - Unauthenticated request returns 401');
+  }
+
+  // 11. Price change detection
+  {
+    // Update product price in DB to 600 (was 500)
+    await Product.findByIdAndUpdate(createdProductId, { price: 600 });
+
+    const res = await fetch(`${BASE_URL}/api/cart`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Cart - Get cart after price change returns 200');
+    const item = json.cart.items[0];
+    assertEqual(item.priceAtAdd, 500, 'Cart - priceAtAdd remains 500');
+    assertEqual(item.currentPrice, 600, 'Cart - currentPrice reflects updated 600');
+    assertEqual(item.priceChanged, true, 'Cart - priceChanged set to true');
+    assertEqual(json.cart.calculatedCartTotal, 4 * 600, 'Cart - Total calculated using current price');
+
+    // Restore original price 500
+    await Product.findByIdAndUpdate(createdProductId, { price: 500 });
+  }
+
+  // 12. Remove cart item
+  {
+    const res = await fetch(`${BASE_URL}/api/cart/items/${createdProductId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Cart - Remove item returns 200');
+    assertEqual(json.cart.items.length, 0, 'Cart - Item removed successfully');
+  }
+
+  // 13. Clear cart
+  {
+    // Add product again to clear
+    await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: createdProductId, quantity: 1 }),
+    });
+
+    const res = await fetch(`${BASE_URL}/api/cart`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Cart - Clear cart returns 200');
+    assertEqual(json.cart.items.length, 0, 'Cart - Cart items empty');
+  }
+}
+
+async function testOrderAPIs() {
+  logSection('ORDER API TESTS');
+
+  let orderId1, orderId2;
+
+  // 1. Empty cart checkout attempt
+  {
+    const res = await fetch(`${BASE_URL}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        deliveryAddress: {
+          label: 'Home',
+          address: '789 Main St',
+          city: 'Ludhiana',
+          state: 'Punjab',
+          pincode: '141001',
+        },
+      }),
+    });
+    assertEqual(res.status, 400, 'Order - Empty cart checkout returns 400');
+  }
+
+  // Setup multi-farmer items in cart for multi-farmer order testing
+  // createdProductId belongs to farmerUser (FarmerProfile 1) -> stock 50, price 100
+  // secondProductId belongs to rogueFarmerUser (FarmerProfile 2) -> stock 20, price 150
+  await Product.findByIdAndUpdate(createdProductId, { quantityAvailable: 50, price: 100, status: 'active' });
+  await Product.findByIdAndUpdate(secondProductId, { quantityAvailable: 20, price: 150, status: 'active' });
+
+  // 2. Add product 1 and product 2 to cart
+  await fetch(`${BASE_URL}/api/cart/items`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${buyerToken}`,
+    },
+    body: JSON.stringify({ product: createdProductId, quantity: 2 }),
+  });
+
+  await fetch(`${BASE_URL}/api/cart/items`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${buyerToken}`,
+    },
+    body: JSON.stringify({ product: secondProductId, quantity: 3 }),
+  });
+
+  // 3. Valid multi-farmer checkout
+  {
+    const res = await fetch(`${BASE_URL}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        deliveryAddress: {
+          label: 'Farm House',
+          address: '456 Green Road',
+          city: 'Ludhiana',
+          state: 'Punjab',
+          pincode: '141002',
+        },
+        paymentMethod: 'COD',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Order - Valid multi-farmer checkout returns 201');
+    assertEqual(json.success, true, 'Order - Checkout success=true');
+    assertOk(Array.isArray(json.orders), 'Order - Returns array of generated orders');
+    assertEqual(json.orders.length, 2, 'Order - Multi-farmer cart split into 2 separate orders');
+
+    orderId1 = json.orders[0]._id;
+    orderId2 = json.orders[1]._id;
+
+    // Verify totals and snapshots
+    const o1 = json.orders.find((o) => o.farmer.toString() === farmerProfileId);
+    const o2 = json.orders.find((o) => o.farmer.toString() === rogueFarmerProfileId);
+
+    assertOk(o1, 'Order 1 exists for Farmer 1');
+    assertOk(o2, 'Order 2 exists for Rogue Farmer 2');
+
+    assertEqual(o1.totalAmount, 2 * 100, 'Order 1 total calculated correctly on backend (200)');
+    assertEqual(o2.totalAmount, 3 * 150, 'Order 2 total calculated correctly on backend (450)');
+
+    assertEqual(o1.items[0].name, 'Organic Wheat Grain', 'Order 1 item snapshot name accurate');
+    assertEqual(o1.items[0].price, 100, 'Order 1 item snapshot price accurate');
+
+    assertEqual(o1.deliveryAddress.address, '456 Green Road', 'Order delivery address snapshot accurate');
+  }
+
+  // 4. Verify cart cleared after checkout
+  {
+    const res = await fetch(`${BASE_URL}/api/cart`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(json.cart.items.length, 0, 'Order - Cart cleared after successful checkout');
+  }
+
+  // 5. Verify stock decremented
+  {
+    const p1 = await Product.findById(createdProductId);
+    const p2 = await Product.findById(secondProductId);
+    assertEqual(p1.quantityAvailable, 48, 'Order - Stock for product 1 decremented from 50 to 48');
+    assertEqual(p2.quantityAvailable, 17, 'Order - Stock for product 2 decremented from 20 to 17');
+  }
+
+  // 6. Insufficient stock checkout protection
+  {
+    // Set stock of product 1 to 1
+    await Product.findByIdAndUpdate(createdProductId, { quantityAvailable: 1 });
+
+    // Add quantity 5 to cart
+    await fetch(`${BASE_URL}/api/cart/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ product: createdProductId, quantity: 5 }),
+    });
+
+    const res = await fetch(`${BASE_URL}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        deliveryAddress: {
+          address: '456 Green Road',
+          city: 'Ludhiana',
+          state: 'Punjab',
+          pincode: '141002',
+        },
+      }),
+    });
+    assertEqual(res.status, 400, 'Order - Insufficient stock checkout returns 400');
+
+    // Clean up cart
+    await fetch(`${BASE_URL}/api/cart`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    // Reset stock to 48
+    await Product.findByIdAndUpdate(createdProductId, { quantityAvailable: 48 });
+  }
+
+  // 7. Get Buyer Orders
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/my-orders`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Buyer get my-orders returns 200');
+    assertOk(json.orders.length >= 2, 'Order - Buyer my-orders count >= 2');
+  }
+
+  // 8. Get Single Order by ID (Owner Buyer)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId1}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Buyer get single order returns 200');
+    assertEqual(json.order._id, orderId1, 'Order - Correct single order returned');
+  }
+
+  // 9. Unauthorized view of order (Other user trying to view)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId1}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    assertEqual(res.status, 403, 'Order - Non-owner viewing order returns 403');
+  }
+
+  // 10. Buyer cancels pending order (Order 1)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId1}/cancel`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({ reason: 'Changed my mind' }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Buyer cancel pending order returns 200');
+    assertEqual(json.order.orderStatus, 'cancelled', 'Order - Status updated to cancelled');
+    assertOk(
+      json.order.statusHistory.some((h) => h.status === 'cancelled'),
+      'Order - statusHistory includes cancelled'
+    );
+
+    // Verify stock was restored from 48 back to 50
+    const p1 = await Product.findById(createdProductId);
+    assertEqual(p1.quantityAvailable, 50, 'Order - Stock restored on cancellation');
+  }
+
+  // 11. Farmer views own orders (Farmer 2 views order 2)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/farmer`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Farmer get farmer orders returns 200');
+    assertOk(json.orders.some((o) => o._id === orderId2), 'Order - Farmer orders list includes order 2');
+  }
+
+  // 12. Farmer 2 accepts Order 2 (pending -> accepted)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}/accept`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Farmer accept pending order returns 200');
+    assertEqual(json.order.orderStatus, 'accepted', 'Order - Status updated to accepted');
+  }
+
+  // 13. Farmer 2 starts processing Order 2 (accepted -> processing)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}/process`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Farmer process accepted order returns 200');
+    assertEqual(json.order.orderStatus, 'processing', 'Order - Status updated to processing');
+  }
+
+  // 14. Buyer attempts cancel after processing (Should Fail)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}/cancel`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    assertEqual(res.status, 400, 'Order - Cancel after processing returns 400');
+  }
+
+  // 15. Farmer 2 ships Order 2 (processing -> shipped)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}/ship`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Farmer ship processing order returns 200');
+    assertEqual(json.order.orderStatus, 'shipped', 'Order - Status updated to shipped');
+  }
+
+  // 16. Farmer 2 marks Order 2 delivered (shipped -> delivered)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}/deliver`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order - Deliver shipped order returns 200');
+    assertEqual(json.order.orderStatus, 'delivered', 'Order - Status updated to delivered');
+  }
+
+  // 17. Invalid status transition (attempting deliver again on delivered order)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}/deliver`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    assertEqual(res.status, 400, 'Order - Invalid status transition returns 400');
+  }
+
+  // 18. Farmer 1 attempting to modify Farmer 2's order
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}/process`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${farmerToken}` },
+    });
+    assertEqual(res.status, 403, 'Order - Cross-farmer modification returns 403');
+  }
+
+  // 19. Historical Snapshot Preservation Test
+  {
+    // Change product price and unit in DB
+    await Product.findByIdAndUpdate(secondProductId, { price: 999, unit: 'quintal' });
+
+    const res = await fetch(`${BASE_URL}/api/orders/${orderId2}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(json.order.items[0].price, 150, 'Data Integrity - Historical order item price snapshot preserved (150)');
+    assertEqual(json.order.items[0].unit, 'kg', 'Data Integrity - Historical order item unit snapshot preserved (kg)');
+  }
+}
+
 async function runAllTests() {
   try {
     await setup();
@@ -855,6 +1386,8 @@ async function runAllTests() {
     await testFarmerProfileAPIs();
     await testBuyerProfileAPIs();
     await testAuthAndErrorHandling();
+    await testCartAPIs();
+    await testOrderAPIs();
     logSection('ALL TESTS PASSED SUCCESSFULLY! 🎉');
     await teardown();
     process.exit(0);

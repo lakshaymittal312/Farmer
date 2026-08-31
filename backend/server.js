@@ -7,6 +7,8 @@ import farmerProfileRoutes from './routes/farmerProfileRoutes.js';
 import buyerProfileRoutes from './routes/buyerProfileRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import productRoutes from './routes/productRoutes.js';
+import cartRoutes from './routes/cartRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -31,6 +33,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/farmer-profiles', farmerProfileRoutes);
 app.use('/api/buyer-profiles', buyerProfileRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
 
 // 404 Handler for undefined routes
 app.use((req, res) => {
