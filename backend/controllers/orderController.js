@@ -5,6 +5,7 @@ import Product from '../models/Product.js';
 import FarmerProfile from '../models/FarmerProfile.js';
 import BuyerProfile from '../models/BuyerProfile.js';
 import User from '../models/User.js';
+import { createNotification, checkAndNotifyLowStock } from '../services/notificationService.js';
 
 // @desc    Checkout / Create Order(s) from Cart
 // @route   POST /api/orders
@@ -165,6 +166,25 @@ export const checkout = async (req, res) => {
 
         await BuyerProfile.findOneAndUpdate({ user: buyerId }, { $inc: { totalOrders: createdOrders.length } });
 
+        // Trigger notifications for order_placed and check product_low_stock
+        for (const order of createdOrders) {
+          const farmerProfile = await FarmerProfile.findById(order.farmer);
+          if (farmerProfile && farmerProfile.user) {
+            await createNotification({
+              receiver: farmerProfile.user,
+              type: 'order_placed',
+              message: 'You received a new order.',
+              relatedOrder: order._id,
+            });
+            for (const item of order.items) {
+              const p = await Product.findById(item.product);
+              if (p) {
+                await checkAndNotifyLowStock(p, farmerProfile);
+              }
+            }
+          }
+        }
+
         return res.status(201).json({
           success: true,
           message: 'Order(s) created successfully',
@@ -254,6 +274,25 @@ export const checkout = async (req, res) => {
         await cart.save();
 
         await BuyerProfile.findOneAndUpdate({ user: buyerId }, { $inc: { totalOrders: createdOrders.length } });
+
+        // Trigger notifications for order_placed and check product_low_stock
+        for (const order of createdOrders) {
+          const farmerProfile = await FarmerProfile.findById(order.farmer);
+          if (farmerProfile && farmerProfile.user) {
+            await createNotification({
+              receiver: farmerProfile.user,
+              type: 'order_placed',
+              message: 'You received a new order.',
+              relatedOrder: order._id,
+            });
+            for (const item of order.items) {
+              const p = await Product.findById(item.product);
+              if (p) {
+                await checkAndNotifyLowStock(p, farmerProfile);
+              }
+            }
+          }
+        }
 
         return res.status(201).json({
           success: true,
@@ -450,6 +489,17 @@ export const cancelOrder = async (req, res) => {
       });
     }
 
+    // Send notification to farmer
+    const farmerProfile = await FarmerProfile.findById(order.farmer);
+    if (farmerProfile && farmerProfile.user) {
+      await createNotification({
+        receiver: farmerProfile.user,
+        type: 'order_cancelled',
+        message: 'An order has been cancelled by the buyer.',
+        relatedOrder: order._id,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Order cancelled successfully',
@@ -519,6 +569,30 @@ const updateOrderStatusByFarmer = async (req, res, targetStatus, allowedFromStat
   }
 
   await order.save();
+
+  // Send status notifications to buyer
+  if (targetStatus === 'accepted') {
+    await createNotification({
+      receiver: order.buyer,
+      type: 'order_accepted',
+      message: 'Your order has been accepted.',
+      relatedOrder: order._id,
+    });
+  } else if (targetStatus === 'shipped') {
+    await createNotification({
+      receiver: order.buyer,
+      type: 'order_shipped',
+      message: 'Your order has been shipped.',
+      relatedOrder: order._id,
+    });
+  } else if (targetStatus === 'rejected') {
+    await createNotification({
+      receiver: order.buyer,
+      type: 'order_cancelled',
+      message: 'Your order was rejected by the farmer.',
+      relatedOrder: order._id,
+    });
+  }
 
   return res.status(200).json({
     success: true,
@@ -656,6 +730,13 @@ export const deliverOrder = async (req, res) => {
     });
 
     await order.save();
+
+    await createNotification({
+      receiver: order.buyer,
+      type: 'order_delivered',
+      message: 'Your order has been delivered.',
+      relatedOrder: order._id,
+    });
 
     return res.status(200).json({
       success: true,

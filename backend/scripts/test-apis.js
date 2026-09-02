@@ -11,6 +11,8 @@ import Product from '../models/Product.js';
 import Category from '../models/Category.js';
 import Cart from '../models/Cart.js';
 import Order from '../models/Order.js';
+import Review from '../models/Review.js';
+import Notification from '../models/Notification.js';
 
 dotenv.config();
 
@@ -25,6 +27,7 @@ let farmerProfileId, rogueFarmerProfileId, buyerProfileId;
 let category1Id, category2Id;
 let createdProductId, secondProductId;
 let addressId1, addressId2;
+let orderId1, orderId2;
 
 const logSection = (title) => {
   console.log(`\n========================================`);
@@ -84,6 +87,8 @@ async function setup() {
 
   await Cart.deleteMany({ buyer: { $in: existingUserIds } });
   await Order.deleteMany({ buyer: { $in: existingUserIds } });
+  await Review.deleteMany({});
+  await Notification.deleteMany({});
   await Product.deleteMany({ farmer: { $in: existingFarmerProfileIds } });
   await FarmerProfile.deleteMany({ user: { $in: existingUserIds } });
   await BuyerProfile.deleteMany({ user: { $in: existingUserIds } });
@@ -836,6 +841,8 @@ async function teardown() {
 
   await Cart.deleteMany({ buyer: { $in: uIds } });
   await Order.deleteMany({ buyer: { $in: uIds } });
+  await Review.deleteMany({});
+  await Notification.deleteMany({});
   await Product.deleteMany({ farmer: { $in: fpIds } });
   await FarmerProfile.deleteMany({ user: { $in: uIds } });
   await BuyerProfile.deleteMany({ user: { $in: uIds } });
@@ -1076,8 +1083,6 @@ async function testCartAPIs() {
 async function testOrderAPIs() {
   logSection('ORDER API TESTS');
 
-  let orderId1, orderId2;
-
   // 1. Empty cart checkout attempt
   {
     const res = await fetch(`${BASE_URL}/api/orders`, {
@@ -1100,9 +1105,21 @@ async function testOrderAPIs() {
   }
 
   // Setup multi-farmer items in cart for multi-farmer order testing
-  // createdProductId belongs to farmerUser (FarmerProfile 1) -> stock 50, price 100
-  // secondProductId belongs to rogueFarmerUser (FarmerProfile 2) -> stock 20, price 150
-  await Product.findByIdAndUpdate(createdProductId, { quantityAvailable: 50, price: 100, status: 'active' });
+  // Re-create product 1 for Farmer 1 (since original createdProductId was deleted in testProductAPIs)
+  const p1 = await Product.create({
+    name: 'Organic Wheat Grain',
+    category: category1Id,
+    description: 'High quality organic wheat',
+    price: 100,
+    unit: 'kg',
+    quantityAvailable: 50,
+    images: ['http://example.com/wheat.jpg'],
+    farmer: farmerProfileId,
+    location: { village: 'Samrala', district: 'Ludhiana', state: 'Punjab' },
+    status: 'active',
+  });
+  createdProductId = p1._id.toString();
+
   await Product.findByIdAndUpdate(secondProductId, { quantityAvailable: 20, price: 150, status: 'active' });
 
   // 2. Add product 1 and product 2 to cart
@@ -1149,15 +1166,15 @@ async function testOrderAPIs() {
     assertOk(Array.isArray(json.orders), 'Order - Returns array of generated orders');
     assertEqual(json.orders.length, 2, 'Order - Multi-farmer cart split into 2 separate orders');
 
-    orderId1 = json.orders[0]._id;
-    orderId2 = json.orders[1]._id;
-
     // Verify totals and snapshots
     const o1 = json.orders.find((o) => o.farmer.toString() === farmerProfileId);
     const o2 = json.orders.find((o) => o.farmer.toString() === rogueFarmerProfileId);
 
     assertOk(o1, 'Order 1 exists for Farmer 1');
     assertOk(o2, 'Order 2 exists for Rogue Farmer 2');
+
+    orderId1 = o1._id;
+    orderId2 = o2._id;
 
     assertEqual(o1.totalAmount, 2 * 100, 'Order 1 total calculated correctly on backend (200)');
     assertEqual(o2.totalAmount, 3 * 150, 'Order 2 total calculated correctly on backend (450)');
@@ -1378,6 +1395,509 @@ async function testOrderAPIs() {
   }
 }
 
+async function testReviewAPIs() {
+  logSection('REVIEW API TESTS');
+
+  let reviewId;
+
+  // 1. Unauthenticated create review -> 401
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: orderId2,
+        rating: 5,
+        comment: 'Unauth attempt',
+      }),
+    });
+    assertEqual(res.status, 401, 'Review - Unauthenticated attempt returns 401');
+  }
+
+  // 2. Farmer attempts to create review -> 403
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${farmerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: orderId2,
+        rating: 5,
+        comment: 'Farmer attempt',
+      }),
+    });
+    assertEqual(res.status, 403, 'Review - Farmer role creation attempt returns 403');
+  }
+
+  // 3. Buyer attempts review before delivery -> 400
+  {
+    const pendingOrder = await Order.create({
+      buyer: buyerUser._id,
+      farmer: rogueFarmerProfileId,
+      items: [
+        {
+          product: secondProductId,
+          name: 'Organically Grown Wheat',
+          price: 150,
+          quantity: 1,
+          unit: 'kg',
+        },
+      ],
+      deliveryAddress: {
+        address: '123 Main St',
+        city: 'Ludhiana',
+        state: 'Punjab',
+        pincode: '141001',
+      },
+      totalAmount: 150,
+      paymentStatus: 'pending',
+      paymentMethod: 'COD',
+      orderStatus: 'pending',
+    });
+
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: pendingOrder._id.toString(),
+        rating: 5,
+        comment: 'Undelivered order attempt',
+      }),
+    });
+    assertEqual(res.status, 400, 'Review - Buyer attempts review on non-delivered order returns 400');
+  }
+
+  // 4. Order does not exist -> 404
+  {
+    const fakeId = new mongoose.Types.ObjectId().toString();
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: fakeId,
+        rating: 5,
+      }),
+    });
+    assertEqual(res.status, 404, 'Review - Non-existent order returns 404');
+  }
+
+  // 5. Product does not exist -> 404
+  {
+    const fakeId = new mongoose.Types.ObjectId().toString();
+    const deliveredOrderWithFakeProduct = await Order.create({
+      buyer: buyerUser._id,
+      farmer: rogueFarmerProfileId,
+      items: [
+        {
+          product: fakeId,
+          name: 'Deleted Product',
+          price: 100,
+          quantity: 1,
+          unit: 'kg',
+        },
+      ],
+      deliveryAddress: {
+        address: '123 Main St',
+        city: 'Ludhiana',
+        state: 'Punjab',
+        pincode: '141001',
+      },
+      totalAmount: 100,
+      paymentStatus: 'paid',
+      paymentMethod: 'COD',
+      orderStatus: 'delivered',
+    });
+
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: fakeId,
+        order: deliveredOrderWithFakeProduct._id.toString(),
+        rating: 5,
+      }),
+    });
+    assertEqual(res.status, 404, 'Review - Non-existent product returns 404');
+  }
+
+  // 6. Product not present in order -> 400
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: createdProductId,
+        order: orderId2,
+        rating: 5,
+      }),
+    });
+    assertEqual(res.status, 400, 'Review - Product not in order returns 400');
+  }
+
+  // 7. Invalid ratings (0, 6, -1, 5.5) -> 400
+  const invalidRatings = [0, 6, -1, 5.5];
+  for (const invalidRating of invalidRatings) {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: orderId2,
+        rating: invalidRating,
+      }),
+    });
+    assertEqual(res.status, 400, `Review - Rating ${invalidRating} returns 400`);
+  }
+
+  // 8. Buyer creates valid review for delivered order (orderId2) -> 201
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: orderId2,
+        rating: 5,
+        comment: 'Fresh and great quality wheat!',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Review - Buyer creates valid review returns 201');
+    assertOk(json.success, 'Review - Creation success true');
+    reviewId = json.review._id;
+
+    // Check Product.rating and FarmerProfile.rating recalculation
+    const prod = await Product.findById(secondProductId);
+    assertEqual(prod.rating, 5, 'Review - Product rating updated to 5');
+    const farmerProf = await FarmerProfile.findById(rogueFarmerProfileId);
+    assertEqual(farmerProf.rating, 5, 'Review - FarmerProfile rating updated to 5');
+  }
+
+  // 9. Duplicate review attempt for same product & order -> 400
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: orderId2,
+        rating: 4,
+      }),
+    });
+    assertEqual(res.status, 400, 'Review - Duplicate review returns 400');
+  }
+
+  // 10. Get product reviews -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/product/${secondProductId}`);
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Review - Get product reviews returns 200');
+    assertOk(json.reviews.length >= 1, 'Review - Product reviews contains created review');
+  }
+
+  // 11. Get my reviews -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/my-reviews`, {
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Review - Get my reviews returns 200');
+    assertOk(json.reviews.length >= 1, 'Review - My reviews contains created review');
+  }
+
+  // 12. Get single review -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/${reviewId}`);
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Review - Get review by ID returns 200');
+    assertEqual(json.review.rating, 5, 'Review - Correct rating in single review');
+  }
+
+  // 13. Edit review rating & comment (Owner buyer) -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/${reviewId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        rating: 3,
+        comment: 'Updated to 3 stars',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Review - Edit review returns 200');
+    assertEqual(json.review.rating, 3, 'Review - Updated rating persisted');
+
+    // Check recalculated ratings
+    const prod = await Product.findById(secondProductId);
+    assertEqual(prod.rating, 3, 'Review - Product rating recalculated to 3 after edit');
+    const farmerProf = await FarmerProfile.findById(rogueFarmerProfileId);
+    assertEqual(farmerProf.rating, 3, 'Review - FarmerProfile rating recalculated to 3 after edit');
+  }
+
+  // 14. Non-owner attempts to edit review -> 403
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/${reviewId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${farmerToken}`,
+      },
+      body: JSON.stringify({ rating: 1 }),
+    });
+    assertEqual(res.status, 403, 'Review - Non-owner edit attempt returns 403');
+  }
+
+  // 15. Create second delivered order & second review for average calculation
+  let reviewId2;
+  {
+    const order3 = await Order.create({
+      buyer: buyerUser._id,
+      farmer: rogueFarmerProfileId,
+      items: [
+        {
+          product: secondProductId,
+          name: 'Organically Grown Wheat',
+          price: 150,
+          quantity: 1,
+          unit: 'kg',
+        },
+      ],
+      deliveryAddress: {
+        address: '123 Main St',
+        city: 'Ludhiana',
+        state: 'Punjab',
+        pincode: '141001',
+      },
+      totalAmount: 150,
+      paymentStatus: 'paid',
+      paymentMethod: 'COD',
+      orderStatus: 'delivered',
+    });
+
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: order3._id.toString(),
+        rating: 5,
+        comment: 'Second purchase review',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Review - Second order review created returns 201');
+    reviewId2 = json.review._id;
+
+    // Ratings should now be (3 + 5) / 2 = 4
+    const prod = await Product.findById(secondProductId);
+    assertEqual(prod.rating, 4, 'Review - Product rating recalculated to 4 (average of 3 and 5)');
+    const farmerProf = await FarmerProfile.findById(rogueFarmerProfileId);
+    assertEqual(farmerProf.rating, 4, 'Review - FarmerProfile rating recalculated to 4 (average of 3 and 5)');
+  }
+
+  // 16. Non-owner attempts delete -> 403
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/${reviewId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${farmerToken}` },
+    });
+    assertEqual(res.status, 403, 'Review - Non-owner delete attempt returns 403');
+  }
+
+  // 17. Delete review 1 -> 200 and rating recalculated to 5 (only review 2 remains)
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/${reviewId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    assertEqual(res.status, 200, 'Review - Delete review 1 returns 200');
+
+    const prod = await Product.findById(secondProductId);
+    assertEqual(prod.rating, 5, 'Review - Product rating updated to 5 after review 1 deleted');
+  }
+
+  // 18. Delete review 2 -> 200 and rating recalculated to 0 (no reviews remain)
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews/${reviewId2}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    assertEqual(res.status, 200, 'Review - Delete review 2 returns 200');
+
+    const prod = await Product.findById(secondProductId);
+    assertEqual(prod.rating, 0, 'Review - Product rating becomes 0 when no reviews remain');
+    const farmerProf = await FarmerProfile.findById(rogueFarmerProfileId);
+    assertEqual(farmerProf.rating, 0, 'Review - FarmerProfile rating becomes 0 when no reviews remain');
+  }
+}
+
+async function testNotificationAPIs() {
+  logSection('NOTIFICATION API TESTS');
+
+  // 1. Get notifications for Farmer 2 (should have received order_placed notification from order 2)
+  let farmerNotificationId;
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications`, {
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Notification - Farmer get notifications returns 200');
+    assertOk(json.notifications.length > 0, 'Notification - Farmer has received order_placed notification');
+    const orderPlacedNotif = json.notifications.find((n) => n.type === 'order_placed');
+    assertOk(Boolean(orderPlacedNotif), 'Notification - order_placed type exists');
+    assertEqual(orderPlacedNotif.isRead, false, 'Notification - Default isRead is false');
+    farmerNotificationId = orderPlacedNotif._id;
+  }
+
+  // 2. Get unread count for Farmer 2
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications/unread-count`, {
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Notification - Unread count returns 200');
+    assertOk(json.count > 0, 'Notification - Unread count > 0');
+  }
+
+  // 3. Non-receiver attempts to mark notification as read -> 403
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications/${farmerNotificationId}/read`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    assertEqual(res.status, 403, 'Notification - Non-receiver mark read attempt returns 403');
+  }
+
+  // 4. Mark single notification as read -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications/${farmerNotificationId}/read`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Notification - Mark read returns 200');
+    assertEqual(json.notification.isRead, true, 'Notification - isRead set to true');
+  }
+
+  // 5. Mark all as read for Farmer 2 -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications/read-all`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Notification - Mark all as read returns 200');
+
+    const countRes = await fetch(`${BASE_URL}/api/notifications/unread-count`, {
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const countJson = await countRes.json();
+    assertEqual(countJson.count, 0, 'Notification - Unread count is 0 after mark-all-as-read');
+  }
+
+  // 6. Non-receiver attempts to delete notification -> 403
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications/${farmerNotificationId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    assertEqual(res.status, 403, 'Notification - Non-receiver delete attempt returns 403');
+  }
+
+  // 7. Receiver deletes notification -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications/${farmerNotificationId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    assertEqual(res.status, 200, 'Notification - Delete notification returns 200');
+  }
+
+  // 8. Test Buyer Notifications for order_accepted, order_shipped, order_delivered
+  {
+    const res = await fetch(`${BASE_URL}/api/notifications`, {
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Notification - Buyer get notifications returns 200');
+    const types = json.notifications.map((n) => n.type);
+    assertOk(types.includes('order_accepted'), 'Notification - Buyer received order_accepted');
+    assertOk(types.includes('order_shipped'), 'Notification - Buyer received order_shipped');
+    assertOk(types.includes('order_delivered'), 'Notification - Buyer received order_delivered');
+  }
+
+  // 9. Low Stock Notification Test
+  {
+    await fetch(`${BASE_URL}/api/products/${secondProductId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${rogueFarmerToken}`,
+      },
+      body: JSON.stringify({ quantityAvailable: 3 }),
+    });
+
+    const res = await fetch(`${BASE_URL}/api/notifications`, {
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    const lowStockNotif = json.notifications.find((n) => n.type === 'product_low_stock');
+    assertOk(Boolean(lowStockNotif), 'Notification - Low stock notification generated when quantity <= 5');
+  }
+
+  // 10. Verification Update Notification Test
+  {
+    await fetch(`${BASE_URL}/api/farmer-profiles/${farmerProfileId}/verification-status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ verificationStatus: 'verified' }),
+    });
+
+    const res = await fetch(`${BASE_URL}/api/notifications`, {
+      headers: { Authorization: `Bearer ${farmerToken}` },
+    });
+    const json = await res.json();
+    const verifyNotif = json.notifications.find((n) => n.type === 'verification_update');
+    assertOk(Boolean(verifyNotif), 'Notification - Verification update notification generated for farmer');
+  }
+}
+
 async function runAllTests() {
   try {
     await setup();
@@ -1388,6 +1908,8 @@ async function runAllTests() {
     await testAuthAndErrorHandling();
     await testCartAPIs();
     await testOrderAPIs();
+    await testReviewAPIs();
+    await testNotificationAPIs();
     logSection('ALL TESTS PASSED SUCCESSFULLY! 🎉');
     await teardown();
     process.exit(0);

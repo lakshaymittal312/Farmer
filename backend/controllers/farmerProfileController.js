@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import FarmerProfile from '../models/FarmerProfile.js';
+import { createNotification } from '../services/notificationService.js';
 
 // @desc    Create farmer profile for logged-in user
 // @route   POST /api/farmer-profiles
@@ -301,6 +302,20 @@ export const updateVerificationStatus = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Farmer profile not found',
+      });
+    }
+
+    // Trigger notification if verificationStatus is verified or rejected
+    if (verificationStatus === 'verified' || verificationStatus === 'rejected') {
+      const message =
+        verificationStatus === 'verified'
+          ? 'Your farmer profile has been verified.'
+          : 'Your farmer profile verification was rejected.';
+      const receiverId = profile.user._id || profile.user;
+      await createNotification({
+        receiver: receiverId,
+        type: 'verification_update',
+        message,
       });
     }
 

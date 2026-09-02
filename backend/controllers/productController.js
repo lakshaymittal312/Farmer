@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import FarmerProfile from '../models/FarmerProfile.js';
 import Category from '../models/Category.js';
+import { checkAndNotifyLowStock } from '../services/notificationService.js';
 
 // @desc    Create a new product
 // @route   POST /api/products
@@ -358,6 +359,10 @@ export const updateProduct = async (req, res) => {
     )
       .populate('category', 'name description')
       .populate('farmer', 'farmName village district state rating');
+
+    if (updatedProduct && farmerProfile) {
+      await checkAndNotifyLowStock(updatedProduct, farmerProfile);
+    }
 
     return res.status(200).json({
       success: true,
