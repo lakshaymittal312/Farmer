@@ -9,6 +9,13 @@ export const createFarmerProfile = async (req, res) => {
   try {
     const userId = req.user._id;
 
+    if (req.user.role !== 'farmer' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only users with farmer role can create a farmer profile',
+      });
+    }
+
     // Check if farmer profile already exists for this user
     const existingProfile = await FarmerProfile.findOne({ user: userId });
     if (existingProfile) {

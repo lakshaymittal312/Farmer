@@ -1898,6 +1898,216 @@ async function testNotificationAPIs() {
   }
 }
 
+async function testNewFeatures() {
+  logSection('NEW FEATURES: REGISTER, CATEGORY, ADMIN & ROLE CONSTRAINT TESTS');
+
+  let newBuyerToken, newFarmerToken;
+
+  // 1. Register Buyer -> 201
+  {
+    const res = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'New Test Buyer',
+        email: 'new_test_buyer@example.com',
+        password: 'password123',
+        phone: '9111111111',
+        role: 'buyer',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Register - Buyer registration returns 201');
+    assertEqual(json.user.role, 'buyer', 'Register - Role is buyer');
+    assertOk(Boolean(json.token), 'Register - JWT token returned');
+    newBuyerToken = json.token;
+  }
+
+  // 2. Register Farmer -> 201
+  {
+    const res = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'New Test Farmer',
+        email: 'new_test_farmer@example.com',
+        password: 'password123',
+        phone: '9222222222',
+        role: 'farmer',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Register - Farmer registration returns 201');
+    assertEqual(json.user.role, 'farmer', 'Register - Role is farmer');
+    assertOk(Boolean(json.token), 'Register - JWT token returned');
+    newFarmerToken = json.token;
+  }
+
+  // 3. Register Admin -> 400 (Admin registration blocked)
+  {
+    const res = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Rogue Admin Attempt',
+        email: 'rogue_admin@example.com',
+        password: 'password123',
+        phone: '9333333333',
+        role: 'admin',
+      }),
+    });
+    assertEqual(res.status, 400, 'Register - Public admin registration returns 400');
+  }
+
+  // 4. Register Duplicate Email -> 400
+  {
+    const res = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Duplicate Email User',
+        email: 'new_test_buyer@example.com',
+        password: 'password123',
+        phone: '9444444444',
+        role: 'buyer',
+      }),
+    });
+    assertEqual(res.status, 400, 'Register - Duplicate email registration returns 400');
+  }
+
+  // 5. Create Category (Admin Only) -> 201
+  let newCatId;
+  {
+    const res = await fetch(`${BASE_URL}/api/categories`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Organic Pulses & Spices',
+        description: 'Pure organic pulses and spices direct from fields',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Category - Create category returns 201');
+    assertEqual(json.data.slug, 'organic-pulses-spices', 'Category - Slug auto-generated from name');
+    newCatId = json.data._id;
+  }
+
+  // 6. Get Categories (Public) -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/categories`);
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Category - Public get categories returns 200');
+    assertOk(json.data.length >= 3, 'Category - Active categories returned');
+  }
+
+  // 7. Update Category (Admin Only) -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/categories/${newCatId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        description: 'Updated category description',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Category - Update category returns 200');
+    assertEqual(json.data.description, 'Updated category description', 'Category - Description updated');
+  }
+
+  // 8. Admin APIs: Get Users -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/admin/users`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Admin API - Get users returns 200');
+    assertOk(json.data.length > 0, 'Admin API - Users list populated');
+  }
+
+  // 9. Admin APIs: Update User Status -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/admin/users/${buyerUser._id}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ isActive: true }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Admin API - Update user status returns 200');
+  }
+
+  // 10. Admin APIs: Get Farmers -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/admin/farmers`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Admin API - Get farmers returns 200');
+    assertOk(json.data.length > 0, 'Admin API - Farmers list populated');
+  }
+
+  // 11. Admin APIs: Get Buyers -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/admin/buyers`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Admin API - Get buyers returns 200');
+  }
+
+  // 12. Admin APIs: Analytics Summary -> 200
+  {
+    const res = await fetch(`${BASE_URL}/api/admin/analytics`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Admin API - Analytics summary returns 200');
+    assertOk(json.data.totalUsers >= 4, 'Admin API - Analytics totalUsers >= 4');
+  }
+
+  // 13. Role Constraint Checks: Buyer user trying to create FarmerProfile -> 403
+  {
+    const res = await fetch(`${BASE_URL}/api/farmer-profiles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${newBuyerToken}`,
+      },
+      body: JSON.stringify({
+        farmName: 'Fake Farm',
+        village: 'V1',
+        district: 'D1',
+        state: 'S1',
+        pincode: '100001',
+      }),
+    });
+    assertEqual(res.status, 403, 'Role Constraint - Buyer creating FarmerProfile returns 403');
+  }
+
+  // 14. Role Constraint Checks: Farmer user trying to create BuyerProfile -> 403
+  {
+    const res = await fetch(`${BASE_URL}/api/buyer-profiles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${newFarmerToken}`,
+      },
+      body: JSON.stringify({
+        preferredCategories: ['Grains'],
+      }),
+    });
+    assertEqual(res.status, 403, 'Role Constraint - Farmer creating BuyerProfile returns 403');
+  }
+}
+
 async function runAllTests() {
   try {
     await setup();
@@ -1910,6 +2120,7 @@ async function runAllTests() {
     await testOrderAPIs();
     await testReviewAPIs();
     await testNotificationAPIs();
+    await testNewFeatures();
     logSection('ALL TESTS PASSED SUCCESSFULLY! 🎉');
     await teardown();
     process.exit(0);

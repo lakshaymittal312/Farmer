@@ -113,6 +113,10 @@ productSchema.pre('save', function (next) {
   next();
 });
 
+// Indexes for performant querying
+productSchema.index({ farmer: 1 });
+productSchema.index({ category: 1 });
+
 const Product = mongoose.model('Product', productSchema);
 
 export default Product;

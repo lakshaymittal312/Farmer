@@ -55,10 +55,10 @@ export const createProduct = async (req, res) => {
       });
     }
     const categoryExists = await Category.findById(category);
-    if (!categoryExists) {
+    if (!categoryExists || !categoryExists.isActive) {
       return res.status(400).json({
         success: false,
-        message: 'Specified category does not exist',
+        message: 'Specified category does not exist or is inactive',
       });
     }
 
@@ -305,10 +305,10 @@ export const updateProduct = async (req, res) => {
         });
       }
       const categoryExists = await Category.findById(updates.category);
-      if (!categoryExists) {
+      if (!categoryExists || !categoryExists.isActive) {
         return res.status(400).json({
           success: false,
-          message: 'Specified category does not exist',
+          message: 'Specified category does not exist or is inactive',
         });
       }
     }

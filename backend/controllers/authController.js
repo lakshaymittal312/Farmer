@@ -8,6 +8,79 @@ const generateToken = (id) => {
   });
 };
 
+// @desc    Register a new user (farmer or buyer)
+// @route   POST /api/auth/register
+// @access  Public
+export const registerUser = async (req, res) => {
+  try {
+    const { name, email, password, phone, role } = req.body;
+
+    if (!name || !email || !password || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields: name, email, password, phone',
+      });
+    }
+
+    const userRole = role || 'buyer';
+    if (!['farmer', 'buyer'].includes(userRole)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role for registration. Public registration allows only farmer or buyer.',
+      });
+    }
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'A user with this email address already exists',
+      });
+    }
+
+    const user = await User.create({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      password,
+      phone: phone.trim(),
+      role: userRole,
+      isVerified: true,
+      isActive: true,
+    });
+
+    const token = generateToken(user._id);
+
+    return res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        permissions: user.permissions,
+        isVerified: user.isVerified,
+        isActive: user.isActive,
+      },
+    });
+  } catch (error) {
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((val) => val.message);
+      return res.status(400).json({
+        success: false,
+        message: messages.join(', '),
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: 'Server error during registration',
+      error: error.message,
+    });
+  }
+};
+
 // @desc    Authenticate user & get token
 // @route   POST /api/auth/login
 // @access  Public

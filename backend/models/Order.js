@@ -159,6 +159,9 @@ const orderSchema = new mongoose.Schema(
   }
 );
 
+orderSchema.index({ buyer: 1 });
+orderSchema.index({ farmer: 1 });
+
 const Order = mongoose.model('Order', orderSchema);
 
 export default Order;

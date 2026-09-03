@@ -13,6 +13,13 @@ export const createBuyerProfile = async (req, res) => {
   try {
     const userId = req.user._id;
 
+    if (req.user.role !== 'buyer' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only users with buyer role can create a buyer profile',
+      });
+    }
+
     // Check duplicate profile
     const existingProfile = await BuyerProfile.findOne({ user: userId });
     if (existingProfile) {
