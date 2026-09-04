@@ -1,85 +1,154 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Eye, ArrowUpRight, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import api from '../../services/api';
+import DashboardSidebar from '../../components/DashboardSidebar';
+import { OrderStatusBadge } from '../../components/ui/Badge';
+import { EmptyState, ErrorState } from '../../components/ui/EmptyState';
 
 const BuyerOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => {
-    fetchMyOrders();
+    fetchOrders();
   }, []);
 
-  const fetchMyOrders = async () => {
+  const fetchOrders = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/orders/my-orders');
-      if (res.data.success) setOrders(res.data.orders);
+      if (res.data.success) {
+        setOrders(res.data.orders || []);
+      }
     } catch (e) {
-      console.error(e);
+      setError(e.message || 'Failed to load orders');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCancel = async (orderId) => {
+  const handleCancelOrder = async (id) => {
     if (!window.confirm('Are you sure you want to cancel this order?')) return;
     try {
-      const res = await api.patch(`/orders/${orderId}/cancel`, { reason: 'Cancelled by buyer' });
-      if (res.data.success) fetchMyOrders();
-    } catch (err) {
-      alert(err.message);
+      const res = await api.patch(`/orders/${id}/cancel`);
+      if (res.data.success) {
+        setOrders((prev) =>
+          prev.map((o) => (o._id === id ? { ...o, orderStatus: 'cancelled' } : o))
+        );
+      }
+    } catch (e) {
+      alert(e.message || 'Failed to cancel order');
     }
   };
 
-  if (loading) return <div className="p-8 text-center">Loading orders...</div>;
+  const filteredOrders = orders.filter((o) => {
+    const status = (o.orderStatus || '').toLowerCase();
+    if (activeTab === 'all') return true;
+    if (activeTab === 'active') return status !== 'delivered' && status !== 'cancelled';
+    if (activeTab === 'delivered') return status === 'delivered';
+    if (activeTab === 'cancelled') return status === 'cancelled';
+    return true;
+  });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">My Orders</h1>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
+      <DashboardSidebar role="buyer" />
 
-      {orders.length === 0 ? (
-        <div className="bg-white p-8 rounded-xl text-center border border-gray-200 text-gray-500">
-          You haven't placed any orders yet.
+      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-border pb-6">
+          <div>
+            <h1 className="text-3xl font-black text-slate-100">My Orders</h1>
+            <p className="text-xs text-slate-400 mt-1">Track status and delivery timeline of your farm produce orders</p>
+          </div>
         </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead className="bg-gray-50 text-gray-700 border-b border-gray-200 font-semibold">
-              <tr>
-                <th className="p-4">Order ID</th>
-                <th className="p-4">Farm</th>
-                <th className="p-4">Items</th>
-                <th className="p-4">Total Amount</th>
-                <th className="p-4">Status</th>
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {orders.map((o) => (
-                <tr key={o._id} className="hover:bg-gray-50">
-                  <td className="p-4 font-mono text-xs font-semibold">{o._id.substring(0, 10)}...</td>
-                  <td className="p-4">{o.farmer?.farmName || 'Farmer'}</td>
-                  <td className="p-4 text-gray-700">
-                    {o.items?.map((i) => `${i.name} (${i.quantity})`).join(', ')}
-                  </td>
-                  <td className="p-4 font-semibold text-emerald-700">₹{o.totalAmount}</td>
-                  <td className="p-4">
-                    <span className="px-2.5 py-1 rounded text-xs font-bold uppercase bg-emerald-100 text-emerald-800">
-                      {o.orderStatus}
-                    </span>
-                  </td>
-                  <td className="p-4 text-right space-x-2">
-                    <Link to={`/buyer/orders/${o._id}`} className="text-emerald-600 font-medium hover:underline text-xs">View</Link>
-                    {(o.orderStatus === 'pending' || o.orderStatus === 'accepted') && (
-                      <button onClick={() => handleCancel(o._id)} className="bg-red-600 text-white text-xs px-2.5 py-1 rounded">Cancel</button>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-dark-border">
+          {[
+            { id: 'all', label: 'All Orders' },
+            { id: 'active', label: 'In Progress' },
+            { id: 'delivered', label: 'Delivered' },
+            { id: 'cancelled', label: 'Cancelled' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                activeTab === tab.id
+                  ? 'bg-primary-500 text-slate-950 shadow-md shadow-primary-500/20'
+                  : 'bg-dark-card border border-dark-border text-slate-300 hover:bg-dark-hover'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Orders List */}
+        {loading ? (
+          <div className="bg-dark-card border border-dark-border rounded-2xl h-80 animate-pulse" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={fetchOrders} />
+        ) : filteredOrders.length === 0 ? (
+          <EmptyState
+            title="No Orders Found"
+            description="You don't have any placed produce orders matching this filter."
+          />
+        ) : (
+          <div className="space-y-4">
+            {filteredOrders.map((o) => (
+              <div
+                key={o._id}
+                className="bg-dark-card border border-dark-border p-5 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm hover:border-primary-500/40 transition"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono font-bold text-slate-100 text-sm">#{o._id.substring(18)}</span>
+                    <OrderStatusBadge status={o.orderStatus} />
+                  </div>
+
+                  <p className="text-xs text-slate-300 font-medium">
+                    Items: {o.items?.map((i) => `${i.name} (x${i.quantity})`).join(', ') || 'Produce'}
+                  </p>
+
+                  <p className="text-[11px] text-slate-500">
+                    Placed on {new Date(o.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end pt-3 sm:pt-0 border-t sm:border-t-0 border-dark-border">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Total Amount</span>
+                    <span className="font-black text-primary-400 text-lg">₹{o.totalAmount}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {o.orderStatus === 'pending' && (
+                      <button
+                        onClick={() => handleCancelOrder(o._id)}
+                        className="px-3 py-2 rounded-xl bg-rose-950 text-rose-300 border border-rose-800 text-xs font-bold hover:bg-rose-900 transition"
+                      >
+                        Cancel
+                      </button>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+
+                    <Link
+                      to={`/buyer/orders/${o._id}`}
+                      className="px-4 py-2 rounded-xl bg-dark-bg border border-dark-border text-primary-400 hover:bg-dark-hover text-xs font-bold flex items-center gap-1"
+                    >
+                      View Timeline <ArrowUpRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
     </div>
   );
 };

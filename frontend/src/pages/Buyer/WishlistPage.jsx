@@ -1,75 +1,120 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Heart, ShoppingCart, Trash2, Eye, Store } from 'lucide-react';
 import api from '../../services/api';
+import DashboardSidebar from '../../components/DashboardSidebar';
+import ImageWithFallback from '../../components/ui/ImageWithFallback';
+import { EmptyState, ErrorState } from '../../components/ui/EmptyState';
 
 const WishlistPage = () => {
   const [wishlist, setWishlist] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchWishlist();
   }, []);
 
   const fetchWishlist = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/buyer-profiles/me');
-      if (res.data.success && res.data.data?.wishlist) {
-        setWishlist(res.data.data.wishlist);
+      if (res.data.success && res.data.data) {
+        setWishlist(res.data.data.wishlist || []);
       }
     } catch (e) {
-      console.error(e);
+      setError(e.message || 'Failed to load wishlist');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRemove = async (productId) => {
+  const handleRemoveWishlist = async (productId) => {
     try {
       const res = await api.delete(`/buyer-profiles/wishlist/${productId}`);
       if (res.data.success) {
-        fetchWishlist();
+        setWishlist(res.data.data.wishlist || []);
       }
-    } catch (err) {
-      alert(err.message);
+    } catch (e) {
+      alert(e.message || 'Failed to remove item');
     }
   };
 
-  if (loading) return <div className="p-8 text-center">Loading wishlist...</div>;
+  const handleAddToCart = async (product) => {
+    try {
+      await api.post('/cart/items', { productId: product._id || product, quantity: 1 });
+      alert('Product added to cart!');
+    } catch (e) {
+      alert(e.message || 'Failed to add product to cart');
+    }
+  };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">My Wishlist</h1>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
+      <DashboardSidebar role="buyer" />
 
-      {wishlist.length === 0 ? (
-        <div className="bg-white p-8 rounded-xl text-center border border-gray-200 text-gray-500">
-          Your wishlist is empty.
+      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
+        <div className="flex items-center justify-between border-b border-dark-border pb-6">
+          <div>
+            <h1 className="text-3xl font-black text-slate-100">Saved Wishlist</h1>
+            <p className="text-xs text-slate-400 mt-1">Your bookmarked farm produce and seasonal harvests</p>
+          </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {wishlist.map((p) => (
-            <div key={p._id || p} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <img
-                src={p.images && p.images[0] ? p.images[0] : 'https://via.placeholder.com/300'}
-                alt={p.name || 'Product'}
-                className="w-full h-48 object-cover"
-              />
-              <div className="p-4">
-                <h3 className="font-bold text-gray-900 text-lg mb-1">{p.name || 'Saved Product'}</h3>
-                <p className="text-emerald-700 font-bold text-lg mb-4">₹{p.price} <span className="text-xs font-normal text-gray-500">/ {p.unit}</span></p>
 
-                <div className="flex gap-2">
-                  <Link to={`/products/${p._id || p}`} className="flex-1 text-center bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs py-2 rounded">
-                    View Product
-                  </Link>
-                  <button onClick={() => handleRemove(p._id || p)} className="bg-red-50 hover:bg-red-100 text-red-600 font-medium text-xs px-3 py-2 rounded">
-                    Remove
-                  </button>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} className="bg-dark-card border border-dark-border rounded-2xl h-72 animate-pulse" />
+            ))}
+          </div>
+        ) : error ? (
+          <ErrorState message={error} onRetry={fetchWishlist} />
+        ) : wishlist.length === 0 ? (
+          <EmptyState
+            title="Your Wishlist is Empty"
+            description="You haven't bookmarked any agricultural produce yet."
+            actionLabel="Browse Marketplace"
+            onAction={() => window.location.assign('/marketplace')}
+            icon={Heart}
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {wishlist.map((item) => {
+              const p = item.product || item;
+              return (
+                <div key={p._id} className="glass-panel-interactive rounded-2xl overflow-hidden p-4 space-y-3 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <ImageWithFallback
+                      src={p.images && p.images[0] ? p.images[0] : ''}
+                      alt={p.name || 'Crop'}
+                      className="w-full h-40 object-cover rounded-xl"
+                    />
+                    <h3 className="font-bold text-slate-100 text-sm truncate">{p.name || 'Produce Item'}</h3>
+                    <p className="text-xs font-black text-primary-400">₹{p.price} / {p.unit || 'kg'}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-dark-border">
+                    <button
+                      onClick={() => handleAddToCart(p)}
+                      className="bg-primary-500 hover:bg-primary-600 text-slate-950 font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-1 shadow-sm"
+                    >
+                      <ShoppingCart className="w-3.5 h-3.5" /> Cart
+                    </button>
+
+                    <button
+                      onClick={() => handleRemoveWishlist(p._id)}
+                      className="bg-dark-bg border border-dark-border hover:bg-rose-950 text-rose-400 font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Remove
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </main>
     </div>
   );
 };

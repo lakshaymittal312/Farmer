@@ -1,57 +1,103 @@
 import React, { useState, useEffect } from 'react';
+import { ShoppingBag, Search, MapPin } from 'lucide-react';
 import api from '../../services/api';
+import DashboardSidebar from '../../components/DashboardSidebar';
+import { EmptyState, ErrorState } from '../../components/ui/EmptyState';
 
 const ManageBuyers = () => {
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchBuyers();
   }, []);
 
   const fetchBuyers = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/admin/buyers');
-      if (res.data.success) setBuyers(res.data.data);
+      if (res.data.success) {
+        setBuyers(res.data.buyers || []);
+      }
     } catch (e) {
-      console.error(e);
-    } finally {
+      setError(e.message || 'Failed to load buyers list');
+    } flex: {
       setLoading(false);
     }
   };
 
-  if (loading) return <div className="p-8 text-center">Loading buyers...</div>;
+  const filteredBuyers = buyers.filter((b) => {
+    const term = searchQuery.toLowerCase();
+    return (
+      (b.user?.name || '').toLowerCase().includes(term) ||
+      (b.user?.email || '').toLowerCase().includes(term)
+    );
+  });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Manage Buyers</h1>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
+      <DashboardSidebar role="admin" />
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full text-left border-collapse text-sm">
-          <thead className="bg-gray-50 text-gray-700 border-b border-gray-200 font-semibold">
-            <tr>
-              <th className="p-4">Buyer Name</th>
-              <th className="p-4">Contact Info</th>
-              <th className="p-4">Total Orders</th>
-              <th className="p-4">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {buyers.map((b) => (
-              <tr key={b._id} className="hover:bg-gray-50">
-                <td className="p-4 font-semibold text-gray-900">{b.user?.name || 'Buyer'}</td>
-                <td className="p-4 text-gray-600">{b.user?.email} | {b.user?.phone}</td>
-                <td className="p-4 font-bold text-emerald-700">{b.totalOrders || 0}</td>
-                <td className="p-4">
-                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${b.user?.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
-                    {b.user?.isActive ? 'Active' : 'Deactivated'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
+        <div className="border-b border-dark-border pb-6">
+          <h1 className="text-3xl font-black text-slate-100">Registered Buyers Directory</h1>
+          <p className="text-xs text-slate-400 mt-1">Overview of registered crop buyers and delivery destinations</p>
+        </div>
+
+        <div className="glass-panel p-4 rounded-2xl max-w-md relative">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search buyer name or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-dark-bg border border-dark-border rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+          />
+        </div>
+
+        {loading ? (
+          <div className="bg-dark-card border border-dark-border rounded-2xl h-80 animate-pulse" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={fetchBuyers} />
+        ) : filteredBuyers.length === 0 ? (
+          <EmptyState title="No Buyers Found" description="No buyer profiles match your query." />
+        ) : (
+          <div className="bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-dark-card">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-dark-bg text-slate-400 uppercase text-[10px] font-bold border-b border-dark-border">
+                  <tr>
+                    <th className="p-4">Buyer Account</th>
+                    <th className="p-4">Contact Phone</th>
+                    <th className="p-4">Saved Addresses</th>
+                    <th className="p-4">Wishlist Count</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-border">
+                  {filteredBuyers.map((b) => (
+                    <tr key={b._id} className="hover:bg-dark-hover transition">
+                      <td className="p-4 font-bold text-slate-100">
+                        <span className="block">{b.user?.name || 'Buyer'}</span>
+                        <span className="text-[10px] text-slate-500">{b.user?.email}</span>
+                      </td>
+                      <td className="p-4 font-mono text-slate-400">{b.phone || 'N/A'}</td>
+                      <td className="p-4 text-slate-300 font-medium">
+                        {b.deliveryAddresses?.length || 0} locations
+                      </td>
+                      <td className="p-4 font-bold text-primary-400">
+                        {b.wishlist?.length || 0} crops
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 };

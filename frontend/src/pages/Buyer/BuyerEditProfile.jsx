@@ -1,18 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { ChevronLeft, Save } from 'lucide-react';
 import api from '../../services/api';
+import DashboardSidebar from '../../components/DashboardSidebar';
 
 const BuyerEditProfile = () => {
   const navigate = useNavigate();
-  const [preferredCategories, setPreferredCategories] = useState('');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [pincode, setPincode] = useState('');
-
-  const [isNew, setIsNew] = useState(true);
-  const [msg, setMsg] = useState('');
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const [phone, setPhone] = useState('');
 
   useEffect(() => {
     fetchProfile();
@@ -22,116 +19,88 @@ const BuyerEditProfile = () => {
     try {
       const res = await api.get('/buyer-profiles/me');
       if (res.data.success && res.data.data) {
-        const p = res.data.data;
-        setPreferredCategories(p.preferredCategories ? p.preferredCategories.join(', ') : '');
-        if (p.deliveryAddresses && p.deliveryAddresses.length > 0) {
-          const def = p.deliveryAddresses.find((a) => a.isDefault) || p.deliveryAddresses[0];
-          setAddress(def.address);
-          setCity(def.city);
-          setState(def.state);
-          setPincode(def.pincode);
-        }
-        setIsNew(false);
+        setPhone(res.data.data.phone || '');
       }
     } catch (e) {
-      setIsNew(true);
+      // blank
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaving(true);
     setError('');
-    setMsg('');
-
-    const payload = {
-      preferredCategories: preferredCategories.split(',').map((s) => s.trim()).filter(Boolean),
-      deliveryAddresses: address ? [{ label: 'Home', address, city, state, pincode, isDefault: true }] : [],
-    };
-
     try {
-      if (isNew) {
-        await api.post('/buyer-profiles', payload);
+      const pRes = await api.get('/buyer-profiles/me');
+      let res;
+      if (pRes.data.success && pRes.data.data) {
+        res = await api.put('/buyer-profiles/me', { phone });
       } else {
-        await api.put('/buyer-profiles/me', payload);
+        res = await api.post('/buyer-profiles', { phone });
       }
-      setMsg('Profile saved successfully!');
-      setTimeout(() => navigate('/buyer/profile'), 1000);
+
+      if (res.data.success) {
+        alert('Buyer profile updated successfully!');
+        navigate('/buyer/profile');
+      }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to save buyer profile');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">{isNew ? 'Create Buyer Profile' : 'Edit Buyer Profile'}</h1>
-        {msg && <div className="mb-4 p-3 bg-emerald-100 text-emerald-800 rounded text-sm">{msg}</div>}
-        {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
+    <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
+      <DashboardSidebar role="buyer" />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
+        <Link
+          to="/buyer/profile"
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-primary-400 transition"
+        >
+          <ChevronLeft className="w-4 h-4" /> Back to Profile
+        </Link>
+
+        <div className="border-b border-dark-border pb-6">
+          <h1 className="text-3xl font-black text-slate-100">Edit Buyer Profile</h1>
+          <p className="text-xs text-slate-400 mt-1">Update primary contact and buyer information</p>
+        </div>
+
+        {error && (
+          <div className="bg-rose-950/40 border border-rose-800/60 p-4 rounded-xl text-rose-300 text-xs font-semibold">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="bg-dark-card border border-dark-border rounded-3xl p-6 sm:p-8 space-y-6 max-w-xl">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Preferred Categories (comma-separated)</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Phone Number</label>
             <input
-              type="text"
-              placeholder="e.g. Vegetables, Grains, Organic Spices"
-              value={preferredCategories}
-              onChange={(e) => setPreferredCategories(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+              type="tel"
+              required
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+91 9876543210"
+              className="w-full bg-dark-bg border border-dark-border rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-primary-500"
             />
           </div>
 
-          <h3 className="font-bold text-gray-900 border-b border-gray-100 pb-2 pt-2">Default Delivery Address</h3>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Street Address</label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-            />
+          <div className="pt-4 border-t border-dark-border flex justify-end gap-4">
+            <Link to="/buyer/profile" className="px-5 py-3 rounded-xl text-xs font-semibold text-slate-400 hover:bg-dark-hover">
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-primary-500 hover:bg-primary-600 text-slate-950 font-bold text-xs px-8 py-3 rounded-xl shadow-lg shadow-primary-500/25 transition flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              {saving ? 'Saving...' : 'Save Profile'}
+            </button>
           </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">City</label>
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">State</label>
-              <input
-                type="text"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Pincode</label>
-              <input
-                type="text"
-                value={pincode}
-                onChange={(e) => setPincode(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded shadow mt-4"
-          >
-            Save Profile
-          </button>
         </form>
-      </div>
+      </main>
     </div>
   );
 };
