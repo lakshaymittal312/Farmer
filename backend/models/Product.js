@@ -116,6 +116,9 @@ productSchema.pre('save', function (next) {
 // Indexes for performant querying
 productSchema.index({ farmer: 1 });
 productSchema.index({ category: 1 });
+productSchema.index({ status: 1 });
+productSchema.index({ price: 1 });
+productSchema.index({ name: 'text', description: 'text' });
 
 const Product = mongoose.model('Product', productSchema);
 

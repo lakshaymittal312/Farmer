@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Category from '../models/Category.js';
+import Product from '../models/Product.js';
 
 // @desc    Get all categories
 // @route   GET /api/categories
@@ -180,7 +181,7 @@ export const updateCategory = async (req, res) => {
   }
 };
 
-// @desc    Delete a category
+// @desc    Delete a category (prevents unsafe deletion if products exist)
 // @route   DELETE /api/categories/:id
 // @access  Private (Admin only)
 export const deleteCategory = async (req, res) => {
@@ -199,6 +200,15 @@ export const deleteCategory = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Category not found',
+      });
+    }
+
+    // Safety check: Prevent deleting category referenced by active/existing products
+    const productCount = await Product.countDocuments({ category: id });
+    if (productCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete category '${category.name}'. It is referenced by ${productCount} existing product(s).`,
       });
     }
 

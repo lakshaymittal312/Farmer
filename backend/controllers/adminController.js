@@ -4,6 +4,7 @@ import FarmerProfile from '../models/FarmerProfile.js';
 import BuyerProfile from '../models/BuyerProfile.js';
 import Product from '../models/Product.js';
 import Order from '../models/Order.js';
+import { updateVerificationStatus } from './farmerProfileController.js';
 
 // @desc    Get all users (Admin only)
 // @route   GET /api/admin/users
@@ -107,6 +108,13 @@ export const getFarmers = async (req, res) => {
   }
 };
 
+// @desc    Verify/Approve/Reject farmer profile
+// @route   PUT /api/admin/farmers/:id/verify
+// @access  Private (Admin)
+export const verifyFarmer = async (req, res) => {
+  return await updateVerificationStatus(req, res);
+};
+
 // @desc    Get all buyer profiles
 // @route   GET /api/admin/buyers
 // @access  Private (Admin)
@@ -179,7 +187,7 @@ export const getAdminOrders = async (req, res) => {
 };
 
 // @desc    Get analytics / summary report
-// @route   GET /api/admin/analytics
+// @route   GET /api/admin/analytics, GET /api/admin/dashboard-stats
 // @access  Private (Admin)
 export const getAnalyticsSummary = async (req, res) => {
   try {

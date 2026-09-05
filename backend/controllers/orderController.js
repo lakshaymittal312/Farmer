@@ -323,6 +323,54 @@ export const checkout = async (req, res) => {
   }
 };
 
+// @desc    Get orders (supports ?buyer=me, ?farmer=me or role-based filtering)
+// @route   GET /api/orders
+// @access  Private
+export const getOrders = async (req, res) => {
+  try {
+    const filter = {};
+
+    if (req.query.buyer === 'me' || req.user.role === 'buyer') {
+      filter.buyer = req.user._id;
+    } else if (req.query.farmer === 'me' || req.user.role === 'farmer') {
+      const farmerProfile = await FarmerProfile.findOne({ user: req.user._id });
+      if (!farmerProfile) {
+        return res.status(404).json({
+          success: false,
+          message: 'Farmer profile not found',
+        });
+      }
+      filter.farmer = farmerProfile._id;
+    } else if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view orders',
+      });
+    }
+
+    if (req.query.status) {
+      filter.orderStatus = req.query.status;
+    }
+
+    const orders = await Order.find(filter)
+      .populate('buyer', 'name email phone')
+      .populate('farmer', 'farmName village district state pincode rating')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: orders.length,
+      orders,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while fetching orders',
+      error: error.message,
+    });
+  }
+};
+
 // @desc    Get buyer's own orders
 // @route   GET /api/orders/my-orders
 // @access  Private (Buyer)
@@ -403,13 +451,11 @@ export const getOrderById = async (req, res) => {
 
     // Check authorization: buyer owner, farmer owner, or admin
     const isBuyerOwner = order.buyer._id.toString() === req.user._id.toString();
-    const isFarmerOwner = async () => {
-      if (req.user.role !== 'farmer') return false;
+    let isFarmer = false;
+    if (req.user.role === 'farmer') {
       const farmerProfile = await FarmerProfile.findOne({ user: req.user._id });
-      return farmerProfile && order.farmer._id.toString() === farmerProfile._id.toString();
-    };
-
-    const isFarmer = await isFarmerOwner();
+      isFarmer = farmerProfile && order.farmer._id.toString() === farmerProfile._id.toString();
+    }
     const isAdmin = req.user.role === 'admin';
 
     if (!isBuyerOwner && !isFarmer && !isAdmin) {
@@ -747,6 +793,55 @@ export const deliverOrder = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Server error while delivering order',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Generic Order Status Update (PUT /api/orders/:id/status)
+// @route   PUT /api/orders/:id/status
+// @access  Private
+export const updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, cancelReason } = req.body;
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid order ID is required',
+      });
+    }
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: 'New order status is required',
+      });
+    }
+
+    if (status === 'cancelled') {
+      return await cancelOrder(req, res);
+    } else if (status === 'accepted') {
+      return await acceptOrder(req, res);
+    } else if (status === 'rejected') {
+      return await rejectOrder(req, res);
+    } else if (status === 'processing') {
+      return await processOrder(req, res);
+    } else if (status === 'shipped') {
+      return await shipOrder(req, res);
+    } else if (status === 'delivered') {
+      return await deliverOrder(req, res);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: `Unsupported or invalid status '${status}'`,
+      });
+    }
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error updating order status',
       error: error.message,
     });
   }

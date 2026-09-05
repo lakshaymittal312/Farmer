@@ -111,16 +111,16 @@ export const createProduct = async (req, res) => {
       unit,
       quantityAvailable,
       images,
-      farmer: farmerProfile._id, // Set automatically from authenticated user's profile
+      farmer: farmerProfile._id,
       location: {
         village: farmerProfile.village,
         district: farmerProfile.district,
         state: farmerProfile.state,
-      }, // Populated automatically from FarmerProfile
+      },
       isOrganic: Boolean(isOrganic),
       harvestDate: harvestDate ? new Date(harvestDate) : null,
       status: initialStatus,
-      rating: 0, // Cannot be set by client
+      rating: 0,
     };
 
     const product = await Product.create(productData);
@@ -150,21 +150,41 @@ export const createProduct = async (req, res) => {
   }
 };
 
-// @desc    Get all products with filtering options
+// @desc    Get all products with searching, filtering, sorting, pagination
 // @route   GET /api/products
 // @access  Public
 export const getProducts = async (req, res) => {
   try {
     const filter = {};
 
-    // Filter by Category
+    // Search by Keyword (Name or Description)
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, 'i');
+      filter['$or'] = [
+        { name: searchRegex },
+        { description: searchRegex },
+      ];
+    }
+
+    // Filter by Category ID
     if (req.query.category) {
       if (mongoose.Types.ObjectId.isValid(req.query.category)) {
         filter.category = req.query.category;
       }
     }
 
-    // Filter by Location (District, State, Village or general location string)
+    // Filter by Price Range
+    if (req.query.minPrice !== undefined || req.query.maxPrice !== undefined) {
+      filter.price = {};
+      if (req.query.minPrice !== undefined && !isNaN(Number(req.query.minPrice))) {
+        filter.price['$gte'] = Number(req.query.minPrice);
+      }
+      if (req.query.maxPrice !== undefined && !isNaN(Number(req.query.maxPrice))) {
+        filter.price['$lte'] = Number(req.query.maxPrice);
+      }
+    }
+
+    // Filter by Location
     if (req.query.district) {
       filter['location.district'] = new RegExp(req.query.district, 'i');
     }
@@ -176,16 +196,23 @@ export const getProducts = async (req, res) => {
     }
     if (req.query.location) {
       const locRegex = new RegExp(req.query.location, 'i');
-      filter['$or'] = [
+      const locationConditions = [
         { 'location.district': locRegex },
         { 'location.state': locRegex },
         { 'location.village': locRegex },
       ];
+      if (filter['$or']) {
+        filter['$and'] = [{ $or: filter['$or'] }, { $or: locationConditions }];
+        delete filter['$or'];
+      } else {
+        filter['$or'] = locationConditions;
+      }
     }
 
-    // Filter by Organic status
-    if (req.query.isOrganic !== undefined) {
-      filter.isOrganic = req.query.isOrganic === 'true' || req.query.isOrganic === true;
+    // Filter by Organic status (support both 'organic' and 'isOrganic')
+    const organicQuery = req.query.organic !== undefined ? req.query.organic : req.query.isOrganic;
+    if (organicQuery !== undefined) {
+      filter.isOrganic = organicQuery === 'true' || organicQuery === true;
     }
 
     // Filter by Product status
@@ -193,14 +220,38 @@ export const getProducts = async (req, res) => {
       filter.status = req.query.status;
     }
 
+    // Sorting
+    let sortOptions = { createdAt: -1 };
+    if (req.query.sort) {
+      const sortField = req.query.sort;
+      if (sortField === 'price') sortOptions = { price: 1 };
+      else if (sortField === '-price') sortOptions = { price: -1 };
+      else if (sortField === 'rating') sortOptions = { rating: 1 };
+      else if (sortField === '-rating') sortOptions = { rating: -1 };
+      else if (sortField === 'newest' || sortField === '-createdAt') sortOptions = { createdAt: -1 };
+      else if (sortField === 'oldest' || sortField === 'createdAt') sortOptions = { createdAt: 1 };
+    }
+
+    // Pagination
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 50));
+    const skip = (page - 1) * limit;
+
+    const total = await Product.countDocuments(filter);
+
     const products = await Product.find(filter)
       .populate('category', 'name description')
       .populate('farmer', 'farmName village district state rating')
-      .sort({ createdAt: -1 });
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       count: products.length,
+      total,
+      page,
+      pages: Math.ceil(total / limit) || 1,
       data: products,
     });
   } catch (error) {
@@ -380,6 +431,69 @@ export const updateProduct = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Server error updating product',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Toggle/update product status (Owning farmer only)
+// @route   PATCH /api/products/:id/status
+// @access  Private (Farmer owner)
+export const toggleProductStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product ID format',
+      });
+    }
+
+    if (!['active', 'inactive', 'out_of_stock'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Allowed values: active, inactive, out_of_stock',
+      });
+    }
+
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    // Ownership check
+    if (req.user.role !== 'farmer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to change product status',
+      });
+    }
+
+    const farmerProfile = await FarmerProfile.findOne({ user: req.user._id });
+    if (!farmerProfile || product.farmer.toString() !== farmerProfile._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to modify this product',
+      });
+    }
+
+    product.status = status;
+    await product.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Product status updated to '${status}'`,
+      data: product,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error updating product status',
       error: error.message,
     });
   }

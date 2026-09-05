@@ -1,9 +1,11 @@
 import express from 'express';
 import {
   checkout,
+  getOrders,
   getBuyerOrders,
   getFarmerOrders,
   getOrderById,
+  updateOrderStatus,
   cancelOrder,
   acceptOrder,
   rejectOrder,
@@ -18,11 +20,16 @@ const router = express.Router();
 // Apply protection to all order routes
 router.use(protect);
 
-router.post('/', authorize('buyer'), checkout);
+router
+  .route('/')
+  .post(authorize('buyer'), checkout)
+  .get(getOrders);
+
 router.get('/my-orders', authorize('buyer'), getBuyerOrders);
 router.get('/farmer', authorize('farmer'), getFarmerOrders);
 router.get('/:id', getOrderById);
 
+router.put('/:id/status', updateOrderStatus);
 router.patch('/:id/cancel', authorize('buyer'), cancelOrder);
 router.patch('/:id/accept', authorize('farmer'), acceptOrder);
 router.patch('/:id/reject', authorize('farmer'), rejectOrder);

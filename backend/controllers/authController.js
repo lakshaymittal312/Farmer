@@ -3,7 +3,7 @@ import User from '../models/User.js';
 
 // Generate JWT Token helper
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'fallback_secret_key', {
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'farm_connect_super_secret_jwt_key_2026', {
     expiresIn: '30d',
   });
 };
@@ -111,8 +111,16 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    // Check password
-    if (user.password !== password) {
+    // Check bcrypt password or fallback for unhashed existing accounts
+    let isMatch = await user.matchPassword(password);
+    if (!isMatch && user.password === password) {
+      isMatch = true;
+      // Automatically upgrade password to bcrypt hash
+      user.password = password;
+      await user.save();
+    }
+
+    if (!isMatch) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',

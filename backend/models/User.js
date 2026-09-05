@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema(
   {
@@ -86,13 +87,25 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Pre-save hook to ensure admin role gets default permissions if permissions array is empty
-userSchema.pre('save', function (next) {
+// Pre-save hook to hash password if modified and set default admin permissions
+userSchema.pre('save', async function (next) {
   if (this.role === 'admin' && (!this.permissions || this.permissions.length === 0)) {
     this.permissions = ['manage_users', 'manage_products', 'manage_orders'];
   }
+
+  if (!this.isModified('password')) {
+    return next();
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
   next();
 });
+
+// Instance method to compare password
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
 
 const User = mongoose.model('User', userSchema);
 

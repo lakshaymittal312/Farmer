@@ -4,6 +4,7 @@ import {
   getProducts,
   getProductById,
   updateProduct,
+  toggleProductStatus,
   deleteProduct,
 } from '../controllers/productController.js';
 import { protect, authorize } from '../middleware/auth.js';
@@ -14,6 +15,8 @@ router
   .route('/')
   .post(protect, authorize('farmer'), createProduct)
   .get(getProducts);
+
+router.patch('/:id/status', protect, authorize('farmer'), toggleProductStatus);
 
 router
   .route('/:id')
