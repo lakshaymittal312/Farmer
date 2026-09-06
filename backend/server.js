@@ -10,6 +10,9 @@ import connectDB from './config/db.js';
 import farmerProfileRoutes from './routes/farmerProfileRoutes.js';
 import buyerProfileRoutes from './routes/buyerProfileRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import farmerRoutes from './routes/farmerRoutes.js';
+import buyerRoutes from './routes/buyerRoutes.js';
 import productRoutes from './routes/productRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
@@ -59,6 +62,9 @@ app.get('/api/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/farmer', farmerRoutes);
+app.use('/api/buyer', buyerRoutes);
 app.use('/api/farmer-profiles', farmerProfileRoutes);
 app.use('/api/buyer-profiles', buyerProfileRoutes);
 app.use('/api/categories', categoryRoutes);

@@ -173,16 +173,20 @@ export const createReview = async (req, res) => {
 // @access  Public
 export const getProductReviews = async (req, res) => {
   try {
-    const { productId } = req.params;
+    const productId = req.params.productId || req.query.product || req.query.productId;
 
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid product ID format',
-      });
+    const filter = {};
+    if (productId) {
+      if (!mongoose.Types.ObjectId.isValid(productId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid product ID format',
+        });
+      }
+      filter.product = productId;
     }
 
-    const reviews = await Review.find({ product: productId })
+    const reviews = await Review.find(filter)
       .populate('buyer', 'name profileImage')
       .sort({ createdAt: -1 });
 

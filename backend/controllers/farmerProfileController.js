@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import FarmerProfile from '../models/FarmerProfile.js';
+import Product from '../models/Product.js';
+import Order from '../models/Order.js';
 import { createNotification } from '../services/notificationService.js';
 
 // @desc    Create farmer profile for logged-in user
@@ -385,6 +387,58 @@ export const deleteFarmerProfile = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Server error deleting farmer profile',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get dashboard statistics for logged-in farmer
+// @route   GET /api/farmer/dashboard-stats
+// @access  Private (Farmer)
+export const getFarmerDashboardStats = async (req, res) => {
+  try {
+    const farmerProfile = await FarmerProfile.findOne({ user: req.user._id });
+    if (!farmerProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Farmer profile not found',
+      });
+    }
+
+    const totalProducts = await Product.countDocuments({ farmer: farmerProfile._id });
+    const activeProducts = await Product.countDocuments({ farmer: farmerProfile._id, status: 'active' });
+
+    const totalOrders = await Order.countDocuments({ farmer: farmerProfile._id });
+    const pendingOrders = await Order.countDocuments({ farmer: farmerProfile._id, orderStatus: 'pending' });
+
+    const revenueResult = await Order.aggregate([
+      { $match: { farmer: farmerProfile._id, orderStatus: 'delivered' } },
+      { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } },
+    ]);
+    const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+    const recentOrders = await Order.find({ farmer: farmerProfile._id })
+      .populate('buyer', 'name email phone')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalProducts,
+        activeProducts,
+        totalOrders,
+        pendingOrders,
+        totalRevenue,
+        rating: farmerProfile.rating || 0,
+        verificationStatus: farmerProfile.verificationStatus,
+        recentOrders,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error retrieving farmer dashboard statistics',
       error: error.message,
     });
   }

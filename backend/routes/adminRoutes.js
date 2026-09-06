@@ -9,6 +9,13 @@ import {
   getAdminOrders,
   getAnalyticsSummary,
 } from '../controllers/adminController.js';
+import {
+  getCategories,
+  getCategoryById,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+} from '../controllers/categoryController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -26,6 +33,17 @@ router.get('/products', getAdminProducts);
 router.get('/orders', getAdminOrders);
 router.get('/analytics', getAnalyticsSummary);
 router.get('/dashboard-stats', getAnalyticsSummary);
+router.get('/reports', getAnalyticsSummary);
 router.get('/reports/summary', getAnalyticsSummary);
+
+// Category Management Routes for Admin
+router.route('/categories')
+  .get(getCategories)
+  .post(createCategory);
+
+router.route('/categories/:id')
+  .get(getCategoryById)
+  .put(updateCategory)
+  .delete(deleteCategory);
 
 export default router;

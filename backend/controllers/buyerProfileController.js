@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import BuyerProfile from '../models/BuyerProfile.js';
+import Order from '../models/Order.js';
+import Cart from '../models/Cart.js';
 
 // Helper to get or create logged-in user's buyer profile
 const getProfileForUser = async (userId) => {
@@ -634,6 +636,49 @@ export const removeWishlistItem = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Server error removing product from wishlist',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get dashboard statistics for logged-in buyer
+// @route   GET /api/buyer/dashboard-stats
+// @access  Private (Buyer)
+export const getBuyerDashboardStats = async (req, res) => {
+  try {
+    const buyerId = req.user._id;
+    const profile = await BuyerProfile.findOne({ user: buyerId });
+
+    const totalOrders = await Order.countDocuments({ buyer: buyerId });
+    const activeOrders = await Order.countDocuments({
+      buyer: buyerId,
+      orderStatus: { $in: ['pending', 'accepted', 'processing', 'shipped'] },
+    });
+
+    const wishlistCount = profile && profile.wishlist ? profile.wishlist.length : 0;
+
+    const cart = await Cart.findOne({ buyer: buyerId });
+    const cartCount = cart && cart.items ? cart.items.length : 0;
+
+    const recentOrders = await Order.find({ buyer: buyerId })
+      .populate('farmer', 'farmName village district state')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalOrders,
+        activeOrders,
+        wishlistCount,
+        cartCount,
+        recentOrders,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error retrieving buyer dashboard statistics',
       error: error.message,
     });
   }

@@ -16,6 +16,7 @@ router.use(protect, authorize('buyer'));
 router
   .route('/')
   .get(getCart)
+  .post(addToCart)
   .delete(clearCart);
 
 router
@@ -24,6 +25,12 @@ router
 
 router
   .route('/items/:productId')
+  .put(updateCartItem)
+  .patch(updateCartItem)
+  .delete(removeCartItem);
+
+router
+  .route('/:productId')
   .put(updateCartItem)
   .patch(updateCartItem)
   .delete(removeCartItem);

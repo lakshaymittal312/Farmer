@@ -1049,6 +1049,311 @@ async function testNewFeatures() {
   }
 }
 
+async function testUserProfileAPIs() {
+  logSection('USER PROFILE API TESTS');
+
+  // 1. GET /api/users/profile
+  {
+    const res = await fetch(`${BASE_URL}/api/users/profile`, {
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'User Profile - GET /api/users/profile returns 200');
+    assertEqual(json.data.email, 'test_buyer_1@example.com', 'User Profile - Correct email returned');
+    assertOk(json.data.password === undefined, 'User Profile - Password is not returned');
+  }
+
+  // 2. PUT /api/users/profile
+  {
+    const res = await fetch(`${BASE_URL}/api/users/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Suresh Updated Buyer',
+        phone: '9888777666',
+        role: 'admin', // Malicious attempt to upgrade role to admin
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'User Profile - PUT /api/users/profile returns 200');
+    assertEqual(json.data.name, 'Suresh Updated Buyer', 'User Profile - Name updated successfully');
+    assertEqual(json.data.role, 'buyer', 'User Profile - Role modification attempt safely ignored');
+  }
+}
+
+async function testFarmerAndBuyerAliasAPIs() {
+  logSection('FARMER & BUYER ALIAS / DASHBOARD STATS TESTS');
+
+  // 1. GET /api/farmer/profile
+  {
+    const res = await fetch(`${BASE_URL}/api/farmer/profile`, {
+      headers: { Authorization: `Bearer ${farmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Farmer Alias - GET /api/farmer/profile returns 200');
+    assertEqual(json.data._id, farmerProfileId, 'Farmer Alias - Correct profile ID');
+  }
+
+  // 2. GET /api/farmer/dashboard-stats
+  {
+    const res = await fetch(`${BASE_URL}/api/farmer/dashboard-stats`, {
+      headers: { Authorization: `Bearer ${farmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Farmer Stats - GET /api/farmer/dashboard-stats returns 200');
+    assertOk(json.data.totalProducts >= 0, 'Farmer Stats - totalProducts field present');
+    assertOk(json.data.totalRevenue >= 0, 'Farmer Stats - totalRevenue field present');
+  }
+
+  // 3. GET /api/buyer/profile
+  {
+    const res = await fetch(`${BASE_URL}/api/buyer/profile`, {
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Buyer Alias - GET /api/buyer/profile returns 200');
+    assertEqual(json.data._id, buyerProfileId, 'Buyer Alias - Correct profile ID');
+  }
+
+  // 4. GET /api/buyer/dashboard-stats
+  {
+    const res = await fetch(`${BASE_URL}/api/buyer/dashboard-stats`, {
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Buyer Stats - GET /api/buyer/dashboard-stats returns 200');
+    assertOk(json.data.totalOrders >= 0, 'Buyer Stats - totalOrders field present');
+  }
+
+  // 5. POST /api/auth/logout
+  {
+    const res = await fetch(`${BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Auth - POST /api/auth/logout returns 200');
+    assertEqual(json.success, true, 'Auth - Logout success is true');
+  }
+}
+
+async function testOrderLifecycleAndReviewSequence() {
+  logSection('ORDER LIFECYCLE, CANCELLATION & REVIEW TESTS');
+
+  let lifecycleOrderId;
+
+  // 1. Add product to cart via direct POST /api/cart
+  {
+    const res = await fetch(`${BASE_URL}/api/cart`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        productId: secondProductId,
+        quantity: 5,
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Cart - Direct POST /api/cart returns 201');
+    assertOk(json.cart.items.length >= 1, 'Cart - Contains item');
+  }
+
+  // 2. Checkout via POST /api/orders
+  {
+    const res = await fetch(`${BASE_URL}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        paymentMethod: 'COD',
+        deliveryAddress: {
+          label: 'Home',
+          address: '456 Main Street',
+          city: 'Ludhiana',
+          state: 'Punjab',
+          pincode: '141001',
+        },
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Order - Checkout returns 201');
+    assertOk(json.orders.length > 0, 'Order created successfully');
+    lifecycleOrderId = json.orders[0]._id;
+  }
+
+  // 3. Attempt review BEFORE delivery -> Must return 400
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: lifecycleOrderId,
+        rating: 5,
+        comment: 'Premature review attempt',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 400, 'Review - Review before delivery rejected with 400');
+    assertEqual(json.success, false, 'Review - Premature review success=false');
+  }
+
+  // 4. Farmer accepts order (pending -> accepted)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${lifecycleOrderId}/accept`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order Lifecycle - Farmer accept returns 200');
+    assertEqual(json.order.orderStatus, 'accepted', 'Order status updated to accepted');
+  }
+
+  // 5. Farmer processes order (accepted -> processing)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${lifecycleOrderId}/process`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order Lifecycle - Farmer process returns 200');
+    assertEqual(json.order.orderStatus, 'processing', 'Order status updated to processing');
+  }
+
+  // 6. Buyer attempts cancellation AFTER processing -> Must return 400
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${lifecycleOrderId}/cancel`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 400, 'Order Cancellation - Cancel after processing rejected with 400');
+  }
+
+  // 7. Farmer ships order (processing -> shipped)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${lifecycleOrderId}/ship`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order Lifecycle - Farmer ship returns 200');
+    assertEqual(json.order.orderStatus, 'shipped', 'Order status updated to shipped');
+  }
+
+  // 8. Farmer delivers order (shipped -> delivered)
+  {
+    const res = await fetch(`${BASE_URL}/api/orders/${lifecycleOrderId}/deliver`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${rogueFarmerToken}` },
+    });
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Order Lifecycle - Farmer deliver returns 200');
+    assertEqual(json.order.orderStatus, 'delivered', 'Order status updated to delivered');
+  }
+
+  // 9. Buyer submits review AFTER delivery -> Must succeed (201)
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: lifecycleOrderId,
+        rating: 5,
+        comment: 'Fresh red tomatoes, exceptional quality!',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 201, 'Review - Review after delivery returns 201');
+    assertEqual(json.review.rating, 5, 'Review - Rating stored as 5');
+  }
+
+  // 10. Attempt DUPLICATE review for same product & order -> Must return 400
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        product: secondProductId,
+        order: lifecycleOrderId,
+        rating: 4,
+        comment: 'Second attempt review',
+      }),
+    });
+    const json = await res.json();
+    assertEqual(res.status, 400, 'Review - Duplicate review rejected with 400');
+  }
+
+  // 11. Fetch product reviews via GET /api/reviews?product=:id
+  {
+    const res = await fetch(`${BASE_URL}/api/reviews?product=${secondProductId}`);
+    const json = await res.json();
+    assertEqual(res.status, 200, 'Review - GET /api/reviews?product=:id returns 200');
+    assertOk(json.reviews.length >= 1, 'Review - Product reviews list populated');
+  }
+}
+
+async function testSecurityMatrix() {
+  logSection('SECURITY MATRIX & ROLE PERMISSION TESTS');
+
+  const adminEndpoints = [
+    { url: '/api/admin/users', method: 'GET' },
+    { url: '/api/admin/farmers', method: 'GET' },
+    { url: '/api/admin/products', method: 'GET' },
+    { url: '/api/admin/orders', method: 'GET' },
+    { url: '/api/admin/reports', method: 'GET' },
+  ];
+
+  for (const ep of adminEndpoints) {
+    // Unauthenticated -> 401
+    {
+      const res = await fetch(`${BASE_URL}${ep.url}`, { method: ep.method });
+      assertEqual(res.status, 401, `Security Matrix - Unauthenticated ${ep.method} ${ep.url} returns 401`);
+    }
+    // Buyer -> 403
+    {
+      const res = await fetch(`${BASE_URL}${ep.url}`, {
+        method: ep.method,
+        headers: { Authorization: `Bearer ${buyerToken}` },
+      });
+      assertEqual(res.status, 403, `Security Matrix - Buyer ${ep.method} ${ep.url} returns 403`);
+    }
+    // Farmer -> 403
+    {
+      const res = await fetch(`${BASE_URL}${ep.url}`, {
+        method: ep.method,
+        headers: { Authorization: `Bearer ${farmerToken}` },
+      });
+      assertEqual(res.status, 403, `Security Matrix - Farmer ${ep.method} ${ep.url} returns 403`);
+    }
+    // Admin -> 200
+    {
+      const res = await fetch(`${BASE_URL}${ep.url}`, {
+        method: ep.method,
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      assertEqual(res.status, 200, `Security Matrix - Admin ${ep.method} ${ep.url} returns 200`);
+    }
+  }
+}
+
 async function teardown() {
   logSection('CLEANUP & TEARDOWN');
 
@@ -1099,6 +1404,10 @@ async function runAllTests() {
     await testReviewAPIs();
     await testNotificationAPIs();
     await testNewFeatures();
+    await testUserProfileAPIs();
+    await testFarmerAndBuyerAliasAPIs();
+    await testOrderLifecycleAndReviewSequence();
+    await testSecurityMatrix();
     logSection('ALL TESTS PASSED SUCCESSFULLY! 🎉');
     await teardown();
     process.exit(0);

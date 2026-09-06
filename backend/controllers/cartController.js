@@ -96,7 +96,8 @@ export const getCart = async (req, res) => {
 // @access  Private (Buyer)
 export const addToCart = async (req, res) => {
   try {
-    const { product: productId, quantity } = req.body;
+    const { quantity } = req.body;
+    const productId = req.body.productId || req.body.product;
 
     if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
       return res.status(400).json({
