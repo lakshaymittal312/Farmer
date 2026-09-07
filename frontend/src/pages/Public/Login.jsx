@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Sprout, Mail, Lock, LogIn, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import toast from 'react-hot-toast';
 
 const Login = () => {
   const { login } = useAuth();
@@ -19,13 +20,16 @@ const Login = () => {
     try {
       const data = await login(email, password);
       if (data.user) {
+        toast.success(`Welcome back, ${data.user.name || 'User'}!`);
         if (data.user.role === 'farmer') navigate('/farmer/dashboard');
         else if (data.user.role === 'buyer') navigate('/buyer/dashboard');
         else if (data.user.role === 'admin') navigate('/admin/dashboard');
         else navigate('/marketplace');
       }
     } catch (err) {
-      setError(err.message || 'Invalid email or password');
+      const errMsg = err.message || 'Invalid email or password';
+      setError(errMsg);
+      toast.error(errMsg);
     } finally {
       setSubmitting(false);
     }

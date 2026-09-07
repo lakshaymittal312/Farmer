@@ -1,100 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ShoppingBag, Trash2, Plus, Minus, ArrowRight, ShieldCheck, Truck } from 'lucide-react';
-import api from '../../services/api';
+import { useCart } from '../../context/CartContext';
 import ImageWithFallback from '../../components/ui/ImageWithFallback';
 import { EmptyState, ErrorState } from '../../components/ui/EmptyState';
+import { CardSkeleton } from '../../components/ui/Skeleton';
 
 const CartPage = () => {
   const navigate = useNavigate();
-  const [cart, setCart] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [updatingId, setUpdatingId] = useState(null);
-
-  useEffect(() => {
-    fetchCart();
-  }, []);
-
-  const fetchCart = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.get('/cart');
-      if (res.data.success) {
-        setCart(res.data.cart);
-      }
-    } catch (e) {
-      setError(e.message || 'Failed to load shopping cart');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { cart, loading, updateCartItem, removeCartItem, clearCart } = useCart();
 
   const handleUpdateQuantity = async (productId, currentQty, delta) => {
     const newQty = currentQty + delta;
     if (newQty < 1) return;
+    await updateCartItem(productId, newQty);
+  };
 
-    setUpdatingId(productId);
-    try {
-      const res = await api.put(`/cart/items/${productId}`, { quantity: newQty });
-      if (res.data.success) {
-        setCart(res.data.cart);
-      }
-    } catch (e) {
-      alert(e.message || 'Failed to update quantity');
-    } finally {
-      setUpdatingId(null);
+  const handleRemove = async (productId) => {
+    await removeCartItem(productId);
+  };
+
+  const handleClear = async () => {
+    if (window.confirm('Are you sure you want to clear your shopping cart?')) {
+      await clearCart();
     }
   };
 
-  const handleRemoveItem = async (productId) => {
-    setUpdatingId(productId);
-    try {
-      const res = await api.delete(`/cart/items/${productId}`);
-      if (res.data.success) {
-        setCart(res.data.cart);
-      }
-    } catch (e) {
-      alert(e.message || 'Failed to remove item');
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const handleClearCart = async () => {
-    if (!window.confirm('Are you sure you want to clear your cart?')) return;
-    try {
-      const res = await api.delete('/cart');
-      if (res.data.success) {
-        setCart({ items: [] });
-      }
-    } catch (e) {
-      alert(e.message || 'Failed to clear cart');
-    }
-  };
-
-  const subtotal = cart?.items?.reduce((acc, i) => acc + (i.price || 0) * i.quantity, 0) || 0;
+  const items = cart?.items || [];
+  const subtotal = items.reduce((acc, i) => acc + (i.price || 0) * (i.quantity || 0), 0);
   const deliveryEstimate = subtotal > 0 ? 50 : 0;
   const grandTotal = subtotal + deliveryEstimate;
 
-  if (loading) {
+  if (loading && !cart) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        <div className="bg-dark-card border border-dark-border rounded-3xl h-96 animate-pulse" />
+      <div className="max-w-7xl mx-auto px-4 py-12 space-y-4">
+        <CardSkeleton />
       </div>
     );
   }
-
-  if (error) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        <ErrorState message={error} onRetry={fetchCart} />
-      </div>
-    );
-  }
-
-  const items = cart?.items || [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -106,7 +49,7 @@ const CartPage = () => {
 
         {items.length > 0 && (
           <button
-            onClick={handleClearCart}
+            onClick={handleClear}
             className="text-xs font-semibold text-rose-400 hover:text-rose-300 flex items-center gap-1"
           >
             <Trash2 className="w-3.5 h-3.5" /> Clear Cart
@@ -126,65 +69,66 @@ const CartPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Cart Items List */}
           <div className="lg:col-span-8 space-y-4">
-            {items.map((item) => (
-              <div
-                key={item.product?._id || item.product}
-                className="bg-dark-card border border-dark-border p-4 sm:p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm"
-              >
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                  <ImageWithFallback
-                    src={item.image || (item.product?.images && item.product?.images[0])}
-                    alt={item.name}
-                    className="w-20 h-20 rounded-2xl object-cover"
-                    hoverScale={false}
-                  />
-                  <div>
-                    <h3 className="font-bold text-slate-100 text-sm">{item.name}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Price: <span className="text-primary-400 font-bold">₹{item.price}</span> / {item.unit || 'unit'}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Farmer: {item.farmer?.farmName || 'Verified Farm'}
-                    </p>
+            {items.map((item) => {
+              const productId = item.product?._id || item.product;
+              return (
+                <div
+                  key={productId}
+                  className="bg-dark-card border border-dark-border p-4 sm:p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-4 w-full sm:w-auto">
+                    <ImageWithFallback
+                      src={item.image || (item.product?.images && item.product?.images[0])}
+                      alt={item.name}
+                      className="w-20 h-20 rounded-2xl object-cover"
+                      hoverScale={false}
+                    />
+                    <div>
+                      <h3 className="font-bold text-slate-100 text-sm">{item.name}</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Price: <span className="text-primary-400 font-bold">₹{item.price}</span> / {item.unit || 'unit'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Farmer: {item.farmer?.farmName || 'Verified Farm'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto pt-3 sm:pt-0 border-t sm:border-t-0 border-dark-border">
+                    {/* Quantity Stepper */}
+                    <div className="flex items-center bg-dark-bg border border-dark-border rounded-xl p-1">
+                      <button
+                        onClick={() => handleUpdateQuantity(productId, item.quantity, -1)}
+                        className="w-7 h-7 rounded-lg bg-dark-card text-slate-300 flex items-center justify-center hover:bg-dark-hover"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </button>
+                      <span className="w-10 text-center text-xs font-bold text-slate-100">{item.quantity}</span>
+                      <button
+                        onClick={() => handleUpdateQuantity(productId, item.quantity, 1)}
+                        className="w-7 h-7 rounded-lg bg-dark-card text-slate-300 flex items-center justify-center hover:bg-dark-hover"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Subtotal */}
+                    <div className="text-right">
+                      <span className="text-slate-400 text-[10px] block">Subtotal</span>
+                      <span className="font-black text-primary-400 text-sm">₹{item.price * item.quantity}</span>
+                    </div>
+
+                    {/* Delete Item */}
+                    <button
+                      onClick={() => handleRemove(productId)}
+                      className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto pt-3 sm:pt-0 border-t sm:border-t-0 border-dark-border">
-                  {/* Quantity Stepper */}
-                  <div className="flex items-center bg-dark-bg border border-dark-border rounded-xl p-1">
-                    <button
-                      onClick={() => handleUpdateQuantity(item.product?._id || item.product, item.quantity, -1)}
-                      disabled={updatingId === (item.product?._id || item.product)}
-                      className="w-7 h-7 rounded-lg bg-dark-card text-slate-300 flex items-center justify-center hover:bg-dark-hover"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-10 text-center text-xs font-bold text-slate-100">{item.quantity}</span>
-                    <button
-                      onClick={() => handleUpdateQuantity(item.product?._id || item.product, item.quantity, 1)}
-                      disabled={updatingId === (item.product?._id || item.product)}
-                      className="w-7 h-7 rounded-lg bg-dark-card text-slate-300 flex items-center justify-center hover:bg-dark-hover"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  {/* Subtotal */}
-                  <div className="text-right">
-                    <span className="text-slate-400 text-[10px] block">Subtotal</span>
-                    <span className="font-black text-primary-400 text-sm">₹{item.price * item.quantity}</span>
-                  </div>
-
-                  {/* Delete Item */}
-                  <button
-                    onClick={() => handleRemoveItem(item.product?._id || item.product)}
-                    className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Sticky Summary Card */}

@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck, MapPin, CreditCard, Truck, Check, Plus, ChevronLeft } from 'lucide-react';
-import api from '../../services/api';
+import { MapPin, CreditCard, Check, Plus, ChevronLeft } from 'lucide-react';
+import { orderApi } from '../../services/orderApi';
+import { buyerApi } from '../../services/buyerApi';
+import { cartApi } from '../../services/cartApi';
+import { useCart } from '../../context/CartContext';
 import Modal from '../../components/ui/Modal';
 import { ErrorState } from '../../components/ui/EmptyState';
+import toast from 'react-hot-toast';
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
+  const { refreshCart } = useCart();
 
   const [cart, setCart] = useState(null);
   const [addresses, setAddresses] = useState([]);
@@ -32,11 +37,11 @@ const CheckoutPage = () => {
     setError(null);
     try {
       // Fetch Cart
-      const cRes = await api.get('/cart');
+      const cRes = await cartApi.getCart();
       if (cRes.data.success) setCart(cRes.data.cart);
 
       // Fetch Buyer Profile / Addresses
-      const pRes = await api.get('/buyer-profiles/me');
+      const pRes = await buyerApi.getProfile();
       if (pRes.data.success && pRes.data.data) {
         const addrs = pRes.data.data.deliveryAddresses || [];
         setAddresses(addrs);
@@ -53,30 +58,31 @@ const CheckoutPage = () => {
   const handleAddAddress = async (e) => {
     e.preventDefault();
     try {
-      const payload = { addressLine, district, state: stateName, pincode, isDefault: addresses.length === 0 };
-      const res = await api.post('/buyer-profiles/addresses', payload);
+      const newAddress = { addressLine, district, state: stateName, pincode, isDefault: addresses.length === 0 };
+      const updatedAddrs = [...addresses, newAddress];
+      const res = await buyerApi.updateProfile({ deliveryAddresses: updatedAddrs });
       if (res.data.success) {
-        const updatedAddrs = res.data.data.deliveryAddresses || [];
         setAddresses(updatedAddrs);
-        setSelectedAddress(updatedAddrs[updatedAddrs.length - 1]);
+        setSelectedAddress(newAddress);
         setShowAddressModal(false);
         setAddressLine('');
         setDistrict('');
         setStateName('');
         setPincode('');
+        toast.success('Delivery address saved!');
       }
     } catch (err) {
-      alert(err.message || 'Failed to add address');
+      toast.error(err.message || 'Failed to add address');
     }
   };
 
   const handlePlaceOrder = async () => {
     if (!selectedAddress) {
-      alert('Please select or add a delivery address.');
+      toast.error('Please select or add a delivery address.');
       return;
     }
     if (!cart || !cart.items || cart.items.length === 0) {
-      alert('Your cart is empty.');
+      toast.error('Your cart is empty.');
       return;
     }
 
@@ -92,13 +98,14 @@ const CheckoutPage = () => {
         paymentMethod,
       };
 
-      const res = await api.post('/orders', payload);
+      const res = await orderApi.checkout(payload);
       if (res.data.success) {
-        alert('Order placed successfully!');
+        toast.success('Order placed successfully!');
+        await refreshCart();
         navigate('/buyer/orders');
       }
     } catch (err) {
-      alert(err.message || 'Failed to place order');
+      toast.error(err.message || 'Failed to place order');
     } finally {
       setSubmitting(false);
     }

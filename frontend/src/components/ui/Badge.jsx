@@ -95,4 +95,75 @@ export const OrganicBadge = () => (
   </span>
 );
 
+export const ProductStatusBadge = ({ status }) => {
+  const normalized = (status || '').toLowerCase();
+
+  const config = {
+    active: {
+      label: 'Active',
+      bg: 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50',
+    },
+    available: {
+      label: 'Available',
+      bg: 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50',
+    },
+    out_of_stock: {
+      label: 'Out of Stock',
+      bg: 'bg-rose-950/40 text-rose-300 border-rose-800/50',
+    },
+    inactive: {
+      label: 'Inactive',
+      bg: 'bg-slate-800/60 text-slate-400 border-slate-700/50',
+    },
+    draft: {
+      label: 'Draft',
+      bg: 'bg-amber-950/40 text-amber-300 border-amber-800/50',
+    },
+  };
+
+  const current = config[normalized] || {
+    label: status || 'Active',
+    bg: 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50',
+  };
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${current.bg}`}>
+      {current.label}
+    </span>
+  );
+};
+
+export const UserStatusBadge = ({ status }) => {
+  const normalized = (status || '').toLowerCase();
+  const isActive = normalized === 'active';
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+      isActive 
+        ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50' 
+        : 'bg-rose-950/40 text-rose-300 border-rose-800/50'
+    }`}>
+      {isActive ? 'Active' : 'Inactive'}
+    </span>
+  );
+};
+
+export const RoleBadge = ({ role }) => {
+  const normalized = (role || '').toLowerCase();
+
+  const config = {
+    admin: 'bg-purple-950/40 text-purple-300 border-purple-800/50',
+    farmer: 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50',
+    buyer: 'bg-blue-950/40 text-blue-300 border-blue-800/50',
+  };
+
+  const badgeClass = config[normalized] || 'bg-slate-800 text-slate-300 border-slate-700';
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize border ${badgeClass}`}>
+      {role || 'User'}
+    </span>
+  );
+};
+
 export default OrderStatusBadge;

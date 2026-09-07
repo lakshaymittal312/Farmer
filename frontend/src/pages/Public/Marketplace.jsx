@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Search, Filter, X, SlidersHorizontal, Sparkles, MapPin, Sprout, ShoppingCart, Star } from 'lucide-react';
-import api from '../../services/api';
-import ImageWithFallback from '../../components/ui/ImageWithFallback';
+import { useSearchParams } from 'react-router-dom';
+import { Search, X, Sparkles } from 'lucide-react';
+import { productApi } from '../../services/productApi';
+import { categoryApi } from '../../services/categoryApi';
+import ProductCard from '../../components/ProductCard';
 import { EmptyState, ErrorState } from '../../components/ui/EmptyState';
-import RatingStars from '../../components/ui/RatingStars';
-import { useAuth } from '../../context/AuthContext';
+import { CardSkeleton } from '../../components/ui/Skeleton';
 
 const Marketplace = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isBuyer } = useAuth();
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -23,7 +22,6 @@ const Marketplace = () => {
   const [minPrice, setMinPrice] = useState(searchParams.get('minPrice') || '');
   const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
   const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'newest');
-  const [cartAddingId, setCartAddingId] = useState(null);
 
   useEffect(() => {
     fetchCategories();
@@ -31,11 +29,12 @@ const Marketplace = () => {
 
   useEffect(() => {
     fetchProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, isOrganic, minPrice, maxPrice, sortBy, searchParams]);
 
   const fetchCategories = async () => {
     try {
-      const res = await api.get('/categories');
+      const res = await categoryApi.getCategories();
       if (res.data.success) setCategories(res.data.data);
     } catch (e) {
       console.error(e);
@@ -55,13 +54,13 @@ const Marketplace = () => {
       if (sortBy) params.sortBy = sortBy;
       params.status = 'active';
 
-      const res = await api.get('/products', { params });
+      const res = await productApi.getProducts(params);
       if (res.data.success) {
         setProducts(res.data.data);
       }
     } catch (e) {
       setError(e.message || 'Failed to load products');
-    } flex: {
+    } finally {
       setLoading(false);
     }
   };
@@ -79,22 +78,6 @@ const Marketplace = () => {
     setMaxPrice('');
     setSortBy('newest');
     setSearchParams({});
-  };
-
-  const handleAddToCart = async (product) => {
-    if (!isBuyer) {
-      alert('Please log in as a buyer to add items to your cart.');
-      return;
-    }
-    setCartAddingId(product._id);
-    try {
-      await api.post('/cart/items', { productId: product._id, quantity: 1 });
-      alert(`Added 1 ${product.unit} of ${product.name} to cart!`);
-    } catch (err) {
-      alert(err.message || 'Failed to add to cart');
-    } finally {
-      setCartAddingId(null);
-    }
   };
 
   return (
@@ -209,11 +192,7 @@ const Marketplace = () => {
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-            <div key={n} className="bg-dark-card border border-dark-border rounded-2xl h-80 animate-pulse p-4 space-y-3">
-              <div className="bg-dark-hover h-44 rounded-xl w-full" />
-              <div className="bg-dark-hover h-5 rounded w-3/4" />
-              <div className="bg-dark-hover h-4 rounded w-1/2" />
-            </div>
+            <CardSkeleton key={n} />
           ))}
         </div>
       ) : error ? (
@@ -228,73 +207,7 @@ const Marketplace = () => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {products.map((p) => (
-            <div
-              key={p._id}
-              className="glass-panel-interactive rounded-2xl overflow-hidden flex flex-col justify-between group"
-            >
-              <div>
-                <div className="relative p-2">
-                  <ImageWithFallback
-                    src={p.images && p.images[0] ? p.images[0] : ''}
-                    alt={p.name}
-                    className="w-full h-48 object-cover rounded-xl"
-                    tilt={true}
-                  />
-                  {p.isOrganic && (
-                    <span className="absolute top-4 left-4 bg-emerald-950/90 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold px-2.5 py-1 rounded-full shadow-lg backdrop-blur-md">
-                      Organic
-                    </span>
-                  )}
-                </div>
-
-                <div className="p-4 space-y-2">
-                  <div className="flex items-start justify-between">
-                    <h3 className="font-bold text-slate-100 text-lg line-clamp-1 group-hover:text-primary-400 transition">
-                      {p.name}
-                    </h3>
-                  </div>
-
-                  <p className="text-xs text-slate-400 flex items-center gap-1">
-                    <Sprout className="w-3.5 h-3.5 text-primary-400 shrink-0" />
-                    <span className="truncate">{p.farmer?.farmName || 'Verified Local Farm'}</span>
-                  </p>
-
-                  {p.location && (p.location.district || p.location.state) && (
-                    <p className="text-[11px] text-slate-400 flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span>{p.location.district}, {p.location.state}</span>
-                    </p>
-                  )}
-
-                  <div className="flex items-center justify-between pt-2">
-                    <div>
-                      <p className="text-xl font-black text-primary-400">
-                        ₹{p.price} <span className="text-xs font-normal text-slate-400">/ {p.unit}</span>
-                      </p>
-                    </div>
-                    <RatingStars rating={p.rating || 5} size="w-3.5 h-3.5" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 pt-0 grid grid-cols-2 gap-2">
-                <Link
-                  to={`/products/${p._id}`}
-                  className="block text-center bg-dark-card hover:bg-dark-hover text-slate-200 font-medium text-xs py-2.5 rounded-xl border border-dark-border transition"
-                >
-                  Details
-                </Link>
-
-                <button
-                  onClick={() => handleAddToCart(p)}
-                  disabled={cartAddingId === p._id}
-                  className="bg-primary-500 hover:bg-primary-600 text-slate-950 font-bold text-xs py-2.5 rounded-xl transition flex items-center justify-center gap-1 shadow-sm"
-                >
-                  <ShoppingCart className="w-3.5 h-3.5" />
-                  {cartAddingId === p._id ? 'Adding...' : 'Add'}
-                </button>
-              </div>
-            </div>
+            <ProductCard key={p._id} product={p} />
           ))}
         </div>
       )}

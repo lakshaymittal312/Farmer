@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Sprout, MapPin, Calendar, ShoppingCart, ShieldCheck, Star, ChevronLeft, Minus, Plus, MessageSquare, CheckCircle2 } from 'lucide-react';
-import api from '../../services/api';
+import { Sprout, MapPin, Calendar, ShoppingCart, ShieldCheck, ChevronLeft, Minus, Plus, MessageSquare } from 'lucide-react';
+import { productApi } from '../../services/productApi';
+import { reviewApi } from '../../services/reviewApi';
 import ImageWithFallback from '../../components/ui/ImageWithFallback';
 import RatingStars from '../../components/ui/RatingStars';
 import { VerificationBadge, OrganicBadge } from '../../components/ui/Badge';
 import { ErrorState } from '../../components/ui/EmptyState';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
+import toast from 'react-hot-toast';
 
 const ProductDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, isBuyer } = useAuth();
+  const { isBuyer } = useAuth();
+  const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
@@ -30,13 +34,14 @@ const ProductDetails = () => {
   useEffect(() => {
     fetchProductDetails();
     fetchReviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchProductDetails = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get(`/products/${id}`);
+      const res = await productApi.getProductById(id);
       if (res.data.success) {
         setProduct(res.data.data);
       }
@@ -49,7 +54,7 @@ const ProductDetails = () => {
 
   const fetchReviews = async () => {
     try {
-      const res = await api.get(`/reviews/product/${id}`);
+      const res = await reviewApi.getProductReviews(id);
       if (res.data.success) setReviews(res.data.data || []);
     } catch (e) {
       // silent
@@ -57,23 +62,11 @@ const ProductDetails = () => {
   };
 
   const handleAddToCart = async (directCheckout = false) => {
-    if (!isBuyer) {
-      alert('Please sign in as a buyer to purchase products.');
-      navigate('/login');
-      return;
-    }
     setAddingCart(true);
-    try {
-      await api.post('/cart/items', { productId: id, quantity });
-      if (directCheckout) {
-        navigate('/checkout');
-      } else {
-        alert(`Successfully added ${quantity} ${product.unit} of ${product.name} to cart!`);
-      }
-    } catch (e) {
-      alert(e.message || 'Failed to add item to cart');
-    } finally {
-      setAddingCart(false);
+    const success = await addToCart(product, quantity);
+    setAddingCart(false);
+    if (success && directCheckout) {
+      navigate('/checkout');
     }
   };
 
@@ -82,20 +75,20 @@ const ProductDetails = () => {
     if (!newComment.trim()) return;
     setSubmittingReview(true);
     try {
-      const res = await api.post('/reviews', {
+      const res = await reviewApi.createReview({
         product: id,
         rating: newRating,
         comment: newComment,
       });
       if (res.data.success) {
-        alert('Thank you! Your review has been submitted.');
+        toast.success('Thank you! Your review has been submitted.');
         setNewComment('');
         setShowReviewForm(false);
         fetchReviews();
         fetchProductDetails();
       }
     } catch (e) {
-      alert(e.message || 'Failed to submit review');
+      toast.error(e.message || 'Failed to submit review');
     } finally {
       setSubmittingReview(false);
     }

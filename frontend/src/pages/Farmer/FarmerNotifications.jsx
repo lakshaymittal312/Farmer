@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Bell, CheckCheck, Trash2, ArrowUpRight, Clock } from 'lucide-react';
-import api from '../../services/api';
-import DashboardSidebar from '../../components/DashboardSidebar';
+import { Bell, CheckCheck, Trash2 } from 'lucide-react';
+import { notificationApi } from '../../services/notificationApi';
 import { EmptyState, ErrorState } from '../../components/ui/EmptyState';
+import toast from 'react-hot-toast';
 
 const FarmerNotifications = () => {
   const [notifications, setNotifications] = useState([]);
@@ -18,7 +17,7 @@ const FarmerNotifications = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get('/notifications');
+      const res = await notificationApi.getMyNotifications();
       if (res.data.success) {
         setNotifications(res.data.notifications || []);
       }
@@ -29,124 +28,115 @@ const FarmerNotifications = () => {
     }
   };
 
-  const handleMarkAllRead = async () => {
+  const handleMarkAsRead = async (id) => {
     try {
-      await api.patch('/notifications/read-all');
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      const res = await notificationApi.markAsRead(id);
+      if (res.data.success) {
+        setNotifications((prev) =>
+          prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
+        );
+      }
     } catch (e) {
-      alert(e.message || 'Failed to mark notifications read');
+      toast.error(e.message || 'Failed to mark as read');
     }
   };
 
-  const handleMarkAsRead = async (id) => {
+  const handleMarkAllRead = async () => {
     try {
-      await api.patch(`/notifications/${id}/read`);
-      setNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, isRead: true } : n)));
+      const res = await notificationApi.markAllAsRead();
+      if (res.data.success) {
+        toast.success('All notifications marked as read.');
+        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      }
     } catch (e) {
-      // silent
+      toast.error(e.message || 'Failed to mark all as read');
     }
   };
 
   const handleDeleteNotification = async (id) => {
     try {
-      await api.delete(`/notifications/${id}`);
+      await notificationApi.deleteNotification(id);
       setNotifications((prev) => prev.filter((n) => n._id !== id));
+      toast.success('Notification deleted.');
     } catch (e) {
-      alert(e.message || 'Failed to delete notification');
+      toast.error(e.message || 'Failed to delete notification');
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
-
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
-      <DashboardSidebar role="farmer" unreadCount={unreadCount} />
-
-      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-border pb-6">
-          <div>
-            <h1 className="text-3xl font-black text-slate-100">Farmer Notification Center</h1>
-            <p className="text-xs text-slate-400 mt-1">Updates on customer orders, verification status, and crop inquiries</p>
-          </div>
-
-          {unreadCount > 0 && (
-            <button
-              onClick={handleMarkAllRead}
-              className="bg-dark-card border border-dark-border hover:border-primary-500 text-slate-200 font-bold px-4 py-2 rounded-xl transition text-xs flex items-center gap-2"
-            >
-              <CheckCheck className="w-4 h-4 text-primary-400" />
-              Mark All As Read
-            </button>
-          )}
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-border pb-6">
+        <div>
+          <h1 className="text-3xl font-black text-slate-100">Farmer Notification Center</h1>
+          <p className="text-xs text-slate-400 mt-1">Updates on customer orders, verification status, and crop inquiries</p>
         </div>
 
-        {loading ? (
-          <div className="bg-dark-card border border-dark-border rounded-2xl h-80 animate-pulse" />
-        ) : error ? (
-          <ErrorState message={error} onRetry={fetchNotifications} />
-        ) : notifications.length === 0 ? (
-          <EmptyState
-            title="No Notifications Yet"
-            description="You don't have any system alerts or order notifications."
-            icon={Bell}
-          />
-        ) : (
-          <div className="space-y-3">
-            {notifications.map((n) => (
-              <div
-                key={n._id}
-                onClick={() => !n.isRead && handleMarkAsRead(n._id)}
-                className={`p-5 rounded-2xl border transition flex items-start justify-between gap-4 ${
-                  !n.isRead
-                    ? 'bg-emerald-950/40 border-primary-500/40 shadow-lg shadow-emerald-950/20'
-                    : 'bg-dark-card border-dark-border opacity-80'
-                }`}
-              >
-                <div className="flex items-start gap-4">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      !n.isRead ? 'bg-primary-500 text-slate-950 font-bold' : 'bg-dark-bg text-slate-400 border border-dark-border'
-                    }`}
-                  >
-                    <Bell className="w-5 h-5" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-slate-100">{n.title}</h4>
-                    <p className="text-xs text-slate-300 leading-relaxed">{n.message}</p>
-                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {new Date(n.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {n.orderId && (
-                    <Link
-                      to={`/farmer/orders/${n.orderId}`}
-                      className="px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-primary-400 hover:text-primary-300 text-xs font-bold flex items-center gap-1"
-                    >
-                      View Order <ArrowUpRight className="w-3.5 h-3.5" />
-                    </Link>
-                  )}
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteNotification(n._id);
-                    }}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition"
-                    title="Delete Notification"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+        {notifications.some((n) => !n.isRead) && (
+          <button
+            onClick={handleMarkAllRead}
+            className="bg-dark-card border border-dark-border hover:border-primary-500 text-primary-400 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5"
+          >
+            <CheckCheck className="w-4 h-4" /> Mark All as Read
+          </button>
         )}
-      </main>
+      </div>
+
+      {loading ? (
+        <div className="bg-dark-card border border-dark-border rounded-2xl h-80 animate-pulse" />
+      ) : error ? (
+        <ErrorState message={error} onRetry={fetchNotifications} />
+      ) : notifications.length === 0 ? (
+        <EmptyState
+          title="No Notifications"
+          description="You don't have any notifications at the moment."
+          icon={Bell}
+        />
+      ) : (
+        <div className="space-y-3">
+          {notifications.map((n) => (
+            <div
+              key={n._id}
+              className={`p-4 sm:p-5 rounded-2xl border transition flex items-start justify-between gap-4 ${
+                !n.isRead
+                  ? 'bg-emerald-950/30 border-primary-500/50 shadow-md'
+                  : 'bg-dark-card border-dark-border'
+              }`}
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-slate-100">{n.title || 'Notification'}</h4>
+                  {!n.isRead && (
+                    <span className="w-2 h-2 rounded-full bg-primary-400 animate-pulse" />
+                  )}
+                </div>
+                <p className="text-xs text-slate-300">{n.message}</p>
+                <span className="text-[10px] text-slate-500 block">
+                  {new Date(n.createdAt).toLocaleString()}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!n.isRead && (
+                  <button
+                    onClick={() => handleMarkAsRead(n._id)}
+                    className="p-1.5 rounded-lg bg-dark-bg border border-dark-border text-primary-400 hover:bg-dark-hover"
+                    title="Mark as Read"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDeleteNotification(n._id)}
+                  className="p-1.5 rounded-lg bg-dark-bg border border-dark-border text-rose-400 hover:bg-rose-950/40"
+                  title="Delete Notification"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

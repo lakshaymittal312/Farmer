@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Sprout, User, Mail, Phone, Lock, UserPlus, AlertCircle, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import toast from 'react-hot-toast';
 
 const Register = () => {
   const { register } = useAuth();
@@ -22,12 +23,15 @@ const Register = () => {
     try {
       const data = await register(name, email, password, phone, role);
       if (data.user) {
+        toast.success(`Account created! Welcome to FarmConnect, ${data.user.name}.`);
         if (data.user.role === 'farmer') navigate('/farmer/profile/edit');
         else if (data.user.role === 'buyer') navigate('/buyer/profile/edit');
         else navigate('/marketplace');
       }
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      const errMsg = err.message || 'Registration failed';
+      setError(errMsg);
+      toast.error(errMsg);
     } finally {
       setSubmitting(false);
     }

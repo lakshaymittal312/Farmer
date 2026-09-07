@@ -1,42 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import { Sprout, ShoppingBag, Bell, User, LogOut, Menu, X, Shield, ChevronDown } from 'lucide-react';
-import api from '../services/api';
+import { notificationApi } from '../services/notificationApi';
 
 const Navbar = () => {
   const { user, isAuthenticated, isFarmer, isBuyer, isAdmin, logout } = useAuth();
+  const { cartCount } = useCart();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [unreadCount, setUnreadCount] = useState(0);
-  const [cartCount, setCartCount] = useState(0);
   const [userDropdown, setUserDropdown] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchUnreadNotifications();
-      if (isBuyer) fetchCartCount();
     }
   }, [isAuthenticated, location.pathname]);
 
   const fetchUnreadNotifications = async () => {
     try {
-      const res = await api.get('/notifications/unread-count');
+      const res = await notificationApi.getUnreadCount();
       if (res.data.success) setUnreadCount(res.data.unreadCount || 0);
-    } catch (err) {
-      // silent
-    }
-  };
-
-  const fetchCartCount = async () => {
-    try {
-      const res = await api.get('/cart');
-      if (res.data.success && res.data.cart?.items) {
-        const count = res.data.cart.items.reduce((acc, i) => acc + i.quantity, 0);
-        setCartCount(count);
-      }
     } catch (err) {
       // silent
     }
@@ -168,10 +156,10 @@ const Navbar = () => {
                     className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-dark-card border border-dark-border hover:border-primary-500/50 transition"
                   >
                     <div className="w-7 h-7 rounded-lg bg-primary-500 text-slate-950 flex items-center justify-center font-bold text-xs">
-                      {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                      {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                     </div>
                     <span className="text-xs font-medium text-slate-200 max-w-[100px] truncate">
-                      {user.name}
+                      {user?.name}
                     </span>
                     <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                   </button>
@@ -179,10 +167,10 @@ const Navbar = () => {
                   {userDropdown && (
                     <div className="absolute right-0 mt-2 w-52 bg-dark-surface border border-dark-border rounded-2xl shadow-2xl p-2 z-50 animate-fade-in">
                       <div className="px-3 py-2 border-b border-dark-border mb-1">
-                        <p className="text-xs font-bold text-slate-100 truncate">{user.name}</p>
-                        <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
+                        <p className="text-xs font-bold text-slate-100 truncate">{user?.name}</p>
+                        <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
                         <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-primary-300 border border-primary-800/60 uppercase font-semibold">
-                          {user.role}
+                          {user?.role}
                         </span>
                       </div>
 
@@ -270,7 +258,7 @@ const Navbar = () => {
 
           {isAuthenticated ? (
             <div className="pt-3 border-t border-dark-border space-y-2">
-              <p className="text-xs text-slate-400">Signed in as {user.name} ({user.role})</p>
+              <p className="text-xs text-slate-400">Signed in as {user?.name} ({user?.role})</p>
               {isFarmer && (
                 <Link
                   to="/farmer/dashboard"

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ChevronLeft, MapPin, Truck, CheckCircle2, Star, MessageSquare } from 'lucide-react';
-import api from '../../services/api';
-import DashboardSidebar from '../../components/DashboardSidebar';
-import { OrderStatusBadge } from '../../components/ui/Badge';
-import StatusTimeline from '../../components/ui/StatusTimeline';
+import { ChevronLeft, MapPin, Truck, Calendar, ShieldCheck, XCircle } from 'lucide-react';
+import { orderApi } from '../../services/orderApi';
+import OrderTimeline from '../../components/ui/OrderTimeline';
+import OrderStatusBadge from '../../components/ui/OrderStatusBadge';
 import { ErrorState } from '../../components/ui/EmptyState';
+import toast from 'react-hot-toast';
 
 const BuyerOrderDetail = () => {
   const { id } = useParams();
@@ -21,7 +21,7 @@ const BuyerOrderDetail = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get(`/orders/${id}`);
+      const res = await orderApi.getOrderById(id);
       if (res.data.success) {
         setOrder(res.data.order);
       }
@@ -35,144 +35,109 @@ const BuyerOrderDetail = () => {
   const handleCancelOrder = async () => {
     if (!window.confirm('Are you sure you want to cancel this order?')) return;
     try {
-      const res = await api.patch(`/orders/${id}/cancel`);
+      const res = await orderApi.cancelOrder(id, 'Cancelled by buyer');
       if (res.data.success) {
+        toast.success('Order cancelled successfully.');
         setOrder(res.data.order);
       }
     } catch (e) {
-      alert(e.message || 'Failed to cancel order');
+      toast.error(e.message || 'Failed to cancel order');
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
-        <DashboardSidebar role="buyer" />
-        <main className="flex-1 p-8">
-          <div className="bg-dark-card border border-dark-border rounded-3xl h-96 animate-pulse" />
-        </main>
-      </div>
-    );
+    return <div className="bg-dark-card border border-dark-border rounded-3xl h-96 animate-pulse p-8" />;
   }
 
   if (error || !order) {
-    return (
-      <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
-        <DashboardSidebar role="buyer" />
-        <main className="flex-1 p-8">
-          <ErrorState message={error || 'Order not found'} onRetry={fetchOrderDetail} />
-        </main>
-      </div>
-    );
+    return <ErrorState message={error || 'Order not found'} onRetry={fetchOrderDetail} />;
   }
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-dark-bg">
-      <DashboardSidebar role="buyer" />
+    <div className="space-y-6">
+      <Link
+        to="/buyer/orders"
+        className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-primary-400 transition"
+      >
+        <ChevronLeft className="w-4 h-4" /> Back to My Orders
+      </Link>
 
-      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
-        <Link
-          to="/buyer/orders"
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-primary-400 transition"
-        >
-          <ChevronLeft className="w-4 h-4" /> Back to My Orders
-        </Link>
-
-        {/* Order Card Summary */}
-        <div className="bg-dark-card border border-dark-border p-6 rounded-3xl space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-border pb-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-black text-slate-100">Order #{order._id.substring(18)}</h1>
-                <OrderStatusBadge status={order.orderStatus} />
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Placed on {new Date(order.createdAt).toLocaleString()}
-              </p>
-            </div>
-
-            {order.orderStatus === 'pending' && (
-              <button
-                onClick={handleCancelOrder}
-                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-xl"
-              >
-                Cancel Order
-              </button>
-            )}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-dark-border pb-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-black text-slate-100">Order #{order._id.substring(18)}</h1>
+            <OrderStatusBadge status={order.orderStatus} />
           </div>
-
-          {/* Visual Progress Tracker */}
-          <div className="pt-2">
-            <h4 className="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider">Fulfillment Status Tracker</h4>
-            <StatusTimeline currentStatus={order.orderStatus} />
-          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            Placed on {new Date(order.createdAt).toLocaleString()}
+          </p>
         </div>
 
-        {/* Order Details Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Items Table */}
-          <div className="lg:col-span-8 bg-dark-card border border-dark-border p-6 rounded-3xl space-y-4">
-            <h3 className="text-base font-bold text-slate-100">Purchased Items</h3>
+        {order.orderStatus === 'pending' && (
+          <button
+            onClick={handleCancelOrder}
+            className="bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5"
+          >
+            <XCircle className="w-4 h-4" /> Cancel Order
+          </button>
+        )}
+      </div>
 
-            <div className="divide-y divide-dark-border">
-              {order.items?.map((item, idx) => (
-                <div key={idx} className="py-4 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={item.image || 'https://via.placeholder.com/100'}
-                      alt={item.name}
-                      className="w-14 h-14 rounded-xl object-cover border border-dark-border"
-                    />
-                    <div>
-                      <h4 className="font-bold text-slate-100 text-sm">{item.name}</h4>
-                      <p className="text-xs text-slate-400">
-                        ₹{item.price} × {item.quantity} {item.unit || 'units'}
-                      </p>
-                      {order.orderStatus === 'delivered' && item.product && (
-                        <Link
-                          to={`/products/${item.product._id || item.product}`}
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-accent-gold hover:underline mt-1"
-                        >
-                          <MessageSquare className="w-3 h-3" /> Leave Product Review
-                        </Link>
-                      )}
-                    </div>
-                  </div>
+      {/* Visual Timeline Bar */}
+      <div className="bg-dark-card border border-dark-border p-6 rounded-3xl space-y-3 shadow-2xl">
+        <h3 className="text-sm font-bold text-slate-100">Fulfillment Status Timeline</h3>
+        <OrderTimeline currentStatus={order.orderStatus} />
+      </div>
 
-                  <p className="font-black text-primary-400 text-sm">₹{item.price * item.quantity}</p>
+      {/* Items & Address Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Produce Items */}
+        <div className="lg:col-span-8 bg-dark-card border border-dark-border p-6 rounded-3xl space-y-4">
+          <h3 className="text-base font-bold text-slate-100">Ordered Produce Items</h3>
+
+          <div className="divide-y divide-dark-border">
+            {order.items?.map((item) => (
+              <div key={item._id || item.product} className="py-3 flex items-center justify-between gap-4">
+                <div>
+                  <h4 className="font-bold text-slate-100 text-sm">{item.name}</h4>
+                  <p className="text-xs text-slate-400">
+                    Quantity: <span className="text-slate-200 font-semibold">{item.quantity} {item.unit || 'unit'}</span> @ ₹{item.price}/{item.unit || 'unit'}
+                  </p>
                 </div>
-              ))}
-            </div>
-
-            <div className="pt-4 border-t border-dark-border flex justify-between items-center text-sm font-bold">
-              <span className="text-slate-300">Total Paid Amount:</span>
-              <span className="text-xl text-primary-400 font-black">₹{order.totalAmount}</span>
-            </div>
+                <span className="font-black text-primary-400 text-sm">₹{item.price * item.quantity}</span>
+              </div>
+            ))}
           </div>
 
-          {/* Delivery Address Card */}
-          <div className="lg:col-span-4 bg-dark-card border border-dark-border p-6 rounded-3xl space-y-4">
-            <h3 className="text-base font-bold text-slate-100">Delivery Information</h3>
+          <div className="pt-4 border-t border-dark-border flex justify-between items-baseline text-sm font-bold">
+            <span className="text-slate-200">Total Order Amount</span>
+            <span className="text-2xl font-black text-primary-400">₹{order.totalAmount}</span>
+          </div>
+        </div>
 
-            {order.shippingAddress && (
-              <div className="text-xs text-slate-300 space-y-2">
-                <p className="flex items-center gap-2 font-bold text-slate-100">
-                  <MapPin className="w-4 h-4 text-primary-400" /> Destination Address
-                </p>
-                <p className="pl-6 text-slate-400">{order.shippingAddress.addressLine}</p>
-                <p className="pl-6 text-slate-400">
-                  {order.shippingAddress.district}, {order.shippingAddress.state} - {order.shippingAddress.pincode}
-                </p>
-              </div>
-            )}
+        {/* Right Shipping Info */}
+        <div className="lg:col-span-4 bg-dark-card border border-dark-border p-6 rounded-3xl space-y-4">
+          <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-primary-400" /> Delivery Address
+          </h3>
 
-            <div className="pt-3 border-t border-dark-border text-xs text-slate-400">
-              <span className="block font-semibold text-slate-200">Payment Mode:</span>
-              <span className="uppercase font-bold text-primary-400">{order.paymentMethod || 'COD'}</span>
+          <div className="text-xs text-slate-300 space-y-1">
+            <p className="font-bold text-slate-100">{order.shippingAddress?.addressLine}</p>
+            <p>{order.shippingAddress?.district}, {order.shippingAddress?.state} - {order.shippingAddress?.pincode}</p>
+          </div>
+
+          <div className="pt-4 border-t border-dark-border space-y-2 text-xs">
+            <div className="flex justify-between text-slate-400">
+              <span>Payment Method:</span>
+              <span className="font-bold text-slate-200 uppercase">{order.paymentMethod || 'COD'}</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Payment Status:</span>
+              <span className="font-bold text-emerald-400 uppercase">{order.paymentStatus || 'Pending'}</span>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 };
