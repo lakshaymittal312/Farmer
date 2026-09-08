@@ -46,7 +46,7 @@ const EditProduct = () => {
         setDescription(p.description || '');
         setPrice(p.price || '');
         setUnit(p.unit || 'kg');
-        setQuantity(p.quantity || 0);
+        setQuantity(p.quantityAvailable !== undefined ? p.quantityAvailable : (p.quantity || 0));
         setStatus(p.status || 'active');
         setIsOrganic(!!p.isOrganic);
         setHarvestDate(p.harvestDate ? p.harvestDate.substring(0, 10) : '');
@@ -109,7 +109,7 @@ const EditProduct = () => {
         description,
         price: parseFloat(price),
         unit,
-        quantity: parseInt(quantity, 10),
+        quantityAvailable: parseInt(quantity, 10),
         status,
         isOrganic,
         harvestDate: harvestDate || undefined,
@@ -223,7 +223,7 @@ const EditProduct = () => {
               onChange={(e) => setUnit(e.target.value)}
               className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-primary-500"
             >
-              {['kg', 'ton', 'quintal', 'gram', 'piece', 'box', 'bag', 'liter', 'dozen'].map((u) => (
+              {['kg', 'quintal', 'dozen', 'piece', 'litre'].map((u) => (
                 <option key={u} value={u}>
                   {u}
                 </option>

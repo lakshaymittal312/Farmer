@@ -40,18 +40,42 @@ export const createReview = async (req, res) => {
     const buyerId = req.user._id;
 
     // 1. Check required fields
-    if (!product || !order || rating === undefined) {
+    if (!product || rating === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide product, order, and rating',
+        message: 'Please provide product and rating',
       });
     }
 
-    // 2. Validate ObjectId formats
-    if (!mongoose.Types.ObjectId.isValid(product) || !mongoose.Types.ObjectId.isValid(order)) {
+    if (!mongoose.Types.ObjectId.isValid(product)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid product or order ID format',
+        message: 'Invalid product ID format',
+      });
+    }
+
+    let orderId = order;
+    if (!orderId) {
+      const deliveredOrder = await Order.findOne({
+        buyer: buyerId,
+        orderStatus: 'delivered',
+        'items.product': product,
+      });
+      if (deliveredOrder) {
+        orderId = deliveredOrder._id;
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'You can only review products from delivered orders that you have purchased.',
+        });
+      }
+    }
+
+    // 2. Validate ObjectId formats
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order ID format',
       });
     }
 
@@ -64,7 +88,7 @@ export const createReview = async (req, res) => {
     }
 
     // 4. Find order and verify ownership
-    const orderDoc = await Order.findById(order);
+    const orderDoc = await Order.findById(orderId);
     if (!orderDoc) {
       return res.status(404).json({
         success: false,

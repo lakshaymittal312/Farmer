@@ -156,6 +156,40 @@ const orderSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        if (ret.deliveryAddress) {
+          ret.shippingAddress = {
+            label: ret.deliveryAddress.label,
+            addressLine: ret.deliveryAddress.address,
+            address: ret.deliveryAddress.address,
+            district: ret.deliveryAddress.city,
+            city: ret.deliveryAddress.city,
+            state: ret.deliveryAddress.state,
+            pincode: ret.deliveryAddress.pincode,
+          };
+        }
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        if (ret.deliveryAddress) {
+          ret.shippingAddress = {
+            label: ret.deliveryAddress.label,
+            addressLine: ret.deliveryAddress.address,
+            address: ret.deliveryAddress.address,
+            district: ret.deliveryAddress.city,
+            city: ret.deliveryAddress.city,
+            state: ret.deliveryAddress.state,
+            pincode: ret.deliveryAddress.pincode,
+          };
+        }
+        return ret;
+      },
+    },
   }
 );
 

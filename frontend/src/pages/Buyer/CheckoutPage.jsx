@@ -88,10 +88,18 @@ const CheckoutPage = () => {
 
     setSubmitting(true);
     try {
+      const addressVal = selectedAddress.address || selectedAddress.addressLine;
+      const cityVal = selectedAddress.city || selectedAddress.district;
       const payload = {
+        deliveryAddress: {
+          address: addressVal,
+          city: cityVal,
+          state: selectedAddress.state,
+          pincode: selectedAddress.pincode,
+        },
         shippingAddress: {
-          addressLine: selectedAddress.addressLine,
-          district: selectedAddress.district,
+          addressLine: addressVal,
+          district: cityVal,
           state: selectedAddress.state,
           pincode: selectedAddress.pincode,
         },

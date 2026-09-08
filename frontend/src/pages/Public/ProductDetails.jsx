@@ -166,9 +166,9 @@ const ProductDetails = () => {
               <span className="text-xs font-semibold text-primary-400 uppercase tracking-widest bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-primary-800/40">
                 {product.category?.name || 'Produce'}
               </span>
-              {product.quantity > 0 ? (
+              {(product.quantityAvailable !== undefined ? product.quantityAvailable : product.quantity) > 0 ? (
                 <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-0.5 rounded-full">
-                  In Stock ({product.quantity} {product.unit})
+                  In Stock ({product.quantityAvailable !== undefined ? product.quantityAvailable : product.quantity} {product.unit})
                 </span>
               ) : (
                 <span className="text-xs font-semibold text-rose-400 bg-rose-950/40 border border-rose-800/40 px-2.5 py-0.5 rounded-full">
@@ -231,7 +231,7 @@ const ProductDetails = () => {
                 </button>
                 <span className="w-12 text-center text-sm font-bold text-slate-100">{quantity}</span>
                 <button
-                  onClick={() => setQuantity((q) => Math.min(product.quantity || 99, q + 1))}
+                  onClick={() => setQuantity((q) => Math.min((product.quantityAvailable !== undefined ? product.quantityAvailable : product.quantity) || 99, q + 1))}
                   className="w-8 h-8 rounded-lg bg-dark-card text-slate-300 flex items-center justify-center hover:bg-dark-hover"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -242,7 +242,7 @@ const ProductDetails = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button
                 onClick={() => handleAddToCart(false)}
-                disabled={addingCart || product.quantity <= 0}
+                disabled={addingCart || (product.quantityAvailable !== undefined ? product.quantityAvailable : product.quantity) <= 0}
                 className="w-full bg-dark-card border border-primary-500/40 text-primary-300 font-bold py-3.5 rounded-2xl hover:bg-primary-500 hover:text-slate-950 transition flex items-center justify-center gap-2 shadow-sm"
               >
                 <ShoppingCart className="w-4 h-4" />
@@ -251,7 +251,7 @@ const ProductDetails = () => {
 
               <button
                 onClick={() => handleAddToCart(true)}
-                disabled={addingCart || product.quantity <= 0}
+                disabled={addingCart || (product.quantityAvailable !== undefined ? product.quantityAvailable : product.quantity) <= 0}
                 className="w-full bg-primary-500 hover:bg-primary-600 text-slate-950 font-bold py-3.5 rounded-2xl transition shadow-lg shadow-primary-500/25 flex items-center justify-center gap-2"
               >
                 Buy Now

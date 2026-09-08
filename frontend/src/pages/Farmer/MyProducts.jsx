@@ -34,7 +34,7 @@ const MyProducts = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await productApi.getProducts();
+      const res = await productApi.getProducts({ farmer: 'me' });
       if (res.data.success) {
         setProducts(res.data.data);
       }
@@ -209,8 +209,8 @@ const MyProducts = () => {
                     </td>
 
                     <td className="p-4">
-                      <span className={`font-bold ${p.quantity > 0 ? 'text-slate-100' : 'text-rose-400'}`}>
-                        {p.quantity} {p.unit}
+                      <span className={`font-bold ${(p.quantityAvailable !== undefined ? p.quantityAvailable : p.quantity) > 0 ? 'text-slate-100' : 'text-rose-400'}`}>
+                        {p.quantityAvailable !== undefined ? p.quantityAvailable : p.quantity} {p.unit}
                       </span>
                     </td>
 

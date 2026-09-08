@@ -24,23 +24,37 @@ export const checkout = async (req, res) => {
     }
 
     // Step 3: Obtain delivery address
-    let deliveryAddress = req.body.deliveryAddress;
-    if (!deliveryAddress || !deliveryAddress.address || !deliveryAddress.city || !deliveryAddress.state || !deliveryAddress.pincode) {
+    const rawAddr = req.body.deliveryAddress || req.body.shippingAddress;
+    let deliveryAddress = null;
+
+    if (rawAddr) {
+      const address = rawAddr.address || rawAddr.addressLine;
+      const city = rawAddr.city || rawAddr.district;
+      const state = rawAddr.state;
+      const pincode = rawAddr.pincode;
+      const label = rawAddr.label || 'Home';
+
+      if (address && city && state && pincode) {
+        deliveryAddress = { label, address, city, state, pincode };
+      }
+    }
+
+    if (!deliveryAddress) {
       const buyerProfile = await BuyerProfile.findOne({ user: buyerId });
       if (buyerProfile && buyerProfile.deliveryAddresses && buyerProfile.deliveryAddresses.length > 0) {
         const defaultAddr = buyerProfile.deliveryAddresses.find((addr) => addr.isDefault) || buyerProfile.deliveryAddresses[0];
         deliveryAddress = {
           label: defaultAddr.label || 'Home',
-          address: defaultAddr.address,
-          city: defaultAddr.city,
+          address: defaultAddr.address || defaultAddr.addressLine,
+          city: defaultAddr.city || defaultAddr.district,
           state: defaultAddr.state,
           pincode: defaultAddr.pincode,
         };
-      } else if (req.user.address && req.user.city && req.user.state && req.user.pincode) {
+      } else if (req.user.address && (req.user.city || req.user.district) && req.user.state && req.user.pincode) {
         deliveryAddress = {
           label: 'Home',
           address: req.user.address,
-          city: req.user.city,
+          city: req.user.city || req.user.district,
           state: req.user.state,
           pincode: req.user.pincode,
         };

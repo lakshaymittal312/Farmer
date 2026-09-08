@@ -81,7 +81,7 @@ const AddProduct = () => {
         description,
         price: parseFloat(price),
         unit,
-        quantity: parseInt(quantity, 10),
+        quantityAvailable: parseInt(quantity, 10),
         isOrganic,
         harvestDate: harvestDate || undefined,
         images,
@@ -192,7 +192,7 @@ const AddProduct = () => {
               onChange={(e) => setUnit(e.target.value)}
               className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-primary-500"
             >
-              {['kg', 'ton', 'quintal', 'gram', 'piece', 'box', 'bag', 'liter', 'dozen'].map((u) => (
+              {['kg', 'quintal', 'dozen', 'piece', 'litre'].map((u) => (
                 <option key={u} value={u}>
                   {u}
                 </option>

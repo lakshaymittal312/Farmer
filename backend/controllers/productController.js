@@ -82,8 +82,9 @@ export const createProduct = async (req, res) => {
       });
     }
 
+    let finalUnit = unit === 'liter' ? 'litre' : unit;
     const allowedUnits = ['kg', 'quintal', 'dozen', 'piece', 'litre'];
-    if (!allowedUnits.includes(unit)) {
+    if (!allowedUnits.includes(finalUnit)) {
       return res.status(400).json({
         success: false,
         message: `Invalid unit. Allowed units are: ${allowedUnits.join(', ')}`,
@@ -108,7 +109,7 @@ export const createProduct = async (req, res) => {
       category,
       description: description.trim(),
       price,
-      unit,
+      unit: finalUnit,
       quantityAvailable,
       images,
       farmer: farmerProfile._id,
@@ -220,14 +221,22 @@ export const getProducts = async (req, res) => {
       filter.status = req.query.status;
     }
 
+    // Filter by Farmer
+    if (req.query.farmer === 'me' && req.user) {
+      const farmerProfile = await FarmerProfile.findOne({ user: req.user._id });
+      if (farmerProfile) filter.farmer = farmerProfile._id;
+    } else if (req.query.farmer && mongoose.Types.ObjectId.isValid(req.query.farmer)) {
+      filter.farmer = req.query.farmer;
+    }
+
     // Sorting
     let sortOptions = { createdAt: -1 };
-    if (req.query.sort) {
-      const sortField = req.query.sort;
-      if (sortField === 'price') sortOptions = { price: 1 };
-      else if (sortField === '-price') sortOptions = { price: -1 };
-      else if (sortField === 'rating') sortOptions = { rating: 1 };
-      else if (sortField === '-rating') sortOptions = { rating: -1 };
+    const sortField = req.query.sort || req.query.sortBy;
+    if (sortField) {
+      if (sortField === 'price' || sortField === 'price_asc') sortOptions = { price: 1 };
+      else if (sortField === '-price' || sortField === 'price_desc') sortOptions = { price: -1 };
+      else if (sortField === 'rating') sortOptions = { rating: -1 };
+      else if (sortField === '-rating') sortOptions = { rating: 1 };
       else if (sortField === 'newest' || sortField === '-createdAt') sortOptions = { createdAt: -1 };
       else if (sortField === 'oldest' || sortField === 'createdAt') sortOptions = { createdAt: 1 };
     }
