@@ -47,25 +47,53 @@ Common authentication attributes (`name`, `email`, `password`, `phone`, `role`) 
 * Node.js (v18+)
 * MongoDB instance (local or MongoDB Atlas)
 
-### Setup & Run
-1. Navigate to the `backend/` directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Environment variables:
-   Copy `.env.example` to `.env` and set your MongoDB URI and server port:
-   ```env
-   PORT=5000
-   MONGODB_URI=mongodb://127.0.0.1:27017/farm_direct_access
-   ```
-4. Start development server:
-   ```bash
-   npm run dev
-   ```
+### Installation
+Run from project root:
+```bash
+npm install
+npm run install-all
+```
+
+### Running the Application
+
+#### 1. Start Both Frontend & Backend Together (One-Command Startup)
+From the project root:
+```bash
+npm run dev
+```
+
+#### 2. Start Backend Only
+```bash
+cd backend
+npm run dev
+```
+
+#### 3. Start Frontend Only
+```bash
+cd frontend
+npm run dev
+```
+
+### Application URLs
+* **Frontend**: `http://localhost:3000`
+* **Backend API**: `http://localhost:5000`
+* **API Health Check**: `http://localhost:5000/api/health`
+
+### Build for Production
+From the project root:
+```bash
+npm run build
+```
+
+---
+
+## Test & Verification
+
+To run the backend API integration test suite:
+```bash
+cd backend
+npm test
+```
 
 ---
 
