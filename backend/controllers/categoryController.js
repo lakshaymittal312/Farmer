@@ -14,7 +14,21 @@ export const getCategories = async (req, res) => {
       filter.isActive = true;
     }
 
-    const categories = await Category.find(filter).sort({ name: 1 });
+    let categories = await Category.find(filter).sort({ name: 1 });
+
+    if (categories.length === 0 && (await Category.countDocuments()) === 0) {
+      const defaultCategories = [
+        { name: 'Vegetables', description: 'Fresh farm vegetables' },
+        { name: 'Fruits', description: 'Fresh seasonal fruits' },
+        { name: 'Grains', description: 'Wheat, Rice, Maize, etc.' },
+        { name: 'Pulses', description: 'Lentils, Chickpeas, Beans' },
+        { name: 'Spices', description: 'Natural and organic spices' },
+        { name: 'Dairy', description: 'Milk, Ghee, Butter, Paneer' },
+        { name: 'Other', description: 'Other agricultural produce' },
+      ];
+      await Category.create(defaultCategories);
+      categories = await Category.find(filter).sort({ name: 1 });
+    }
 
     return res.status(200).json({
       success: true,
