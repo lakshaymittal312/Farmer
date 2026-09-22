@@ -62,7 +62,7 @@ const farmerProfileSchema = new mongoose.Schema(
     farmingType: {
       type: String,
       enum: {
-        values: ['organic', 'conventional', 'mixed'],
+        values: ['organic', 'conventional', 'hydroponic', 'mixed'],
         message: '{VALUE} is not a valid farming type',
       },
       default: 'conventional',

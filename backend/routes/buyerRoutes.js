@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  createBuyerProfile,
   getLoggedInBuyerProfile,
   updateBuyerProfile,
   getBuyerDashboardStats,
@@ -10,6 +11,7 @@ const router = express.Router();
 
 router.use(protect, authorize('buyer'));
 
+router.post('/profile', createBuyerProfile);
 router.get('/profile', getLoggedInBuyerProfile);
 router.put('/profile', updateBuyerProfile);
 router.get('/dashboard-stats', getBuyerDashboardStats);

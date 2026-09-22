@@ -43,6 +43,14 @@ const buyerProfileSchema = new mongoose.Schema(
       required: [true, 'User reference is required'],
       unique: true,
     },
+    buyerType: {
+      type: String,
+      enum: {
+        values: ['retail', 'wholesale', 'restaurant', 'exporter'],
+        message: '{VALUE} is not a valid buyer type',
+      },
+      default: 'retail',
+    },
     deliveryAddresses: {
       type: [deliveryAddressSchema],
       default: [],

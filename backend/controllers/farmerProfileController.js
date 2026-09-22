@@ -30,15 +30,16 @@ export const createFarmerProfile = async (req, res) => {
     const {
       farmName,
       farmDescription,
-      village,
-      district,
-      state,
-      pincode,
       farmingType,
       cropsGrown,
       verificationDocs,
       bankDetails,
     } = req.body;
+
+    const village = req.body.village || req.body.location?.addressLine;
+    const district = req.body.district || req.body.location?.district;
+    const state = req.body.state || req.body.location?.state;
+    const pincode = req.body.pincode || req.body.location?.pincode;
 
     // Required fields validation
     if (!farmName || !village || !district || !state || !pincode) {
@@ -219,6 +220,9 @@ export const updateFarmerProfile = async (req, res) => {
     }
 
     if (!profile) {
+      if (!id || id === 'me') {
+        return createFarmerProfile(req, res);
+      }
       return res.status(404).json({
         success: false,
         message: 'Farmer profile not found',
@@ -234,6 +238,15 @@ export const updateFarmerProfile = async (req, res) => {
     }
 
     const updates = { ...req.body };
+
+    // Map nested location object if provided
+    if (updates.location) {
+      if (updates.location.addressLine) updates.village = updates.location.addressLine;
+      if (updates.location.district) updates.district = updates.location.district;
+      if (updates.location.state) updates.state = updates.location.state;
+      if (updates.location.pincode) updates.pincode = updates.location.pincode;
+      delete updates.location;
+    }
 
     // Strip sensitive / admin-controlled fields if updated by normal user
     if (req.user.role !== 'admin') {

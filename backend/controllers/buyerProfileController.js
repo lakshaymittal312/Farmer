@@ -31,10 +31,11 @@ export const createBuyerProfile = async (req, res) => {
       });
     }
 
-    const { deliveryAddresses, preferredCategories, wishlist } = req.body;
+    const { buyerType, deliveryAddresses, preferredCategories, wishlist } = req.body;
 
     const profileData = {
       user: userId,
+      buyerType: buyerType || 'retail',
       deliveryAddresses: Array.isArray(deliveryAddresses) ? deliveryAddresses : [],
       preferredCategories: Array.isArray(preferredCategories) ? preferredCategories : [],
       wishlist: Array.isArray(wishlist) ? wishlist : [],
@@ -194,6 +195,9 @@ export const updateBuyerProfile = async (req, res) => {
     }
 
     if (!profile) {
+      if (!id || id === 'me') {
+        return createBuyerProfile(req, res);
+      }
       return res.status(404).json({
         success: false,
         message: 'Buyer profile not found',

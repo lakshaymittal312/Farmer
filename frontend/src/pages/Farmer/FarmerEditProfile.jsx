@@ -32,10 +32,10 @@ const FarmerEditProfile = () => {
         const p = res.data.data;
         setFarmName(p.farmName || '');
         setFarmDescription(p.farmDescription || '');
-        setAddressLine(p.location?.addressLine || '');
-        setDistrict(p.location?.district || '');
-        setStateName(p.location?.state || '');
-        setPincode(p.location?.pincode || '');
+        setAddressLine(p.village || p.location?.addressLine || '');
+        setDistrict(p.district || p.location?.district || '');
+        setStateName(p.state || p.location?.state || '');
+        setPincode(p.pincode || p.location?.pincode || '');
         setFarmingType(p.farmingType || 'organic');
         setCropsGrown(p.cropsGrown ? p.cropsGrown.join(', ') : '');
       }
@@ -54,6 +54,10 @@ const FarmerEditProfile = () => {
       const payload = {
         farmName,
         farmDescription,
+        village: addressLine,
+        district,
+        state: stateName,
+        pincode,
         location: {
           addressLine,
           district,

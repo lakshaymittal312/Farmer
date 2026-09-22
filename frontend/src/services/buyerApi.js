@@ -2,6 +2,7 @@ import api from './api';
 
 export const buyerApi = {
   getProfile: () => api.get('/buyer/profile'),
+  createProfile: (data) => api.post('/buyer/profile', data),
   updateProfile: (data) => api.put('/buyer/profile', data),
   getDashboardStats: () => api.get('/buyer/dashboard-stats'),
 };

@@ -42,7 +42,7 @@ const BuyerProfileView = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const newAddress = { addressLine, district, state: stateName, pincode };
+      const newAddress = { label: 'Home', address: addressLine, city: district, state: stateName, pincode };
       const currentAddrs = profile?.deliveryAddresses || [];
       const updatedAddrs = [...currentAddrs, newAddress];
       const res = await buyerApi.updateProfile({ deliveryAddresses: updatedAddrs });
@@ -136,8 +136,8 @@ const BuyerProfileView = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {profile.deliveryAddresses.map((addr, idx) => (
                   <div key={idx} className="bg-dark-bg border border-dark-border p-4 rounded-2xl space-y-1">
-                    <p className="font-bold text-slate-100 text-xs">{addr.addressLine}</p>
-                    <p className="text-xs text-slate-400">{addr.district}, {addr.state} - {addr.pincode}</p>
+                    <p className="font-bold text-slate-100 text-xs">{addr.address || addr.addressLine}</p>
+                    <p className="text-xs text-slate-400">{addr.city || addr.district}, {addr.state} - {addr.pincode}</p>
                   </div>
                 ))}
               </div>

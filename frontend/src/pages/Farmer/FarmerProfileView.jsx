@@ -83,9 +83,11 @@ const FarmerProfileView = () => {
                 <span className="text-slate-400 font-medium">Farm Location</span>
                 <p className="font-bold text-slate-100 flex items-center gap-1.5 text-sm">
                   <MapPin className="w-4 h-4 text-primary-400" />
-                  {profile.location?.district || 'District'}, {profile.location?.state || 'State'}
+                  {profile.district || profile.location?.district || 'District'}, {profile.state || profile.location?.state || 'State'}
                 </p>
-                <p className="text-[11px] text-slate-400">{profile.location?.addressLine}</p>
+                <p className="text-[11px] text-slate-400">
+                  {profile.village || profile.location?.addressLine}{profile.pincode ? `, PIN: ${profile.pincode}` : ''}
+                </p>
               </div>
 
               <div className="space-y-1">
