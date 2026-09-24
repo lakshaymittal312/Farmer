@@ -160,9 +160,10 @@ const AddProduct = () => {
 
         {/* Description */}
         <div>
-          <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
+          <label className="block text-xs font-semibold text-slate-300 mb-1">Description *</label>
           <textarea
             rows="3"
+            required
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe harvest method, freshness, grade quality, packaging details..."

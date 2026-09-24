@@ -58,9 +58,10 @@ const MyProducts = () => {
     try {
       const res = await productApi.toggleStatus(id);
       if (res.data.success) {
-        toast.success(`Product status updated to ${res.data.product.status}`);
+        const updatedProduct = res.data.data || res.data.product;
+        toast.success(`Product status updated to ${updatedProduct.status}`);
         setProducts((prev) =>
-          prev.map((p) => (p._id === id ? { ...p, status: res.data.product.status } : p))
+          prev.map((p) => (p._id === id ? { ...p, status: updatedProduct.status } : p))
         );
       }
     } catch (e) {
