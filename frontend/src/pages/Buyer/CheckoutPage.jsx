@@ -58,7 +58,16 @@ const CheckoutPage = () => {
   const handleAddAddress = async (e) => {
     e.preventDefault();
     try {
-      const newAddress = { addressLine, district, state: stateName, pincode, isDefault: addresses.length === 0 };
+      const newAddress = {
+        label: 'Home',
+        address: addressLine,
+        city: district,
+        addressLine,
+        district,
+        state: stateName,
+        pincode,
+        isDefault: addresses.length === 0,
+      };
       const updatedAddrs = [...addresses, newAddress];
       const res = await buyerApi.updateProfile({ deliveryAddresses: updatedAddrs });
       if (res.data.success) {
