@@ -41,13 +41,14 @@ const Marketplace = () => {
     }
   };
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (overrideSearch = null) => {
     setLoading(true);
     setError(null);
     try {
       const params = {};
       if (selectedCategory) params.category = selectedCategory;
-      if (searchQuery) params.search = searchQuery;
+      const q = overrideSearch !== null ? overrideSearch : searchQuery;
+      if (q) params.search = q;
       if (isOrganic) params.isOrganic = isOrganic;
       if (minPrice) params.minPrice = minPrice;
       if (maxPrice) params.maxPrice = maxPrice;
@@ -78,6 +79,7 @@ const Marketplace = () => {
     setMaxPrice('');
     setSortBy('newest');
     setSearchParams({});
+    fetchProducts('');
   };
 
   return (
@@ -119,7 +121,10 @@ const Marketplace = () => {
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
+                onClick={() => {
+                  setSearchQuery('');
+                  fetchProducts('');
+                }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
               >
                 <X className="w-4 h-4" />

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import Product from '../models/Product.js';
 import FarmerProfile from '../models/FarmerProfile.js';
 import Category from '../models/Category.js';
@@ -222,9 +223,31 @@ export const getProducts = async (req, res) => {
     }
 
     // Filter by Farmer
-    if (req.query.farmer === 'me' && req.user) {
-      const farmerProfile = await FarmerProfile.findOne({ user: req.user._id });
-      if (farmerProfile) filter.farmer = farmerProfile._id;
+    if (req.query.farmer === 'me') {
+      let userId = req.user?._id;
+      if (!userId && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        try {
+          const token = req.headers.authorization.split(' ')[1];
+          const secret = process.env.JWT_SECRET || 'farm_connect_super_secret_jwt_key_2026';
+          const decoded = jwt.verify(token, secret);
+          userId = decoded.id;
+        } catch (e) {
+          // invalid token
+        }
+      }
+      if (userId) {
+        const farmerProfile = await FarmerProfile.findOne({ user: userId });
+        if (farmerProfile) {
+          filter.farmer = farmerProfile._id;
+        } else {
+          filter.farmer = new mongoose.Types.ObjectId();
+        }
+      } else {
+        return res.status(401).json({
+          success: false,
+          message: 'Not authorized, token required for farmer=me query',
+        });
+      }
     } else if (req.query.farmer && mongoose.Types.ObjectId.isValid(req.query.farmer)) {
       filter.farmer = req.query.farmer;
     }
