@@ -6,7 +6,7 @@ import { productApi } from '../../services/productApi';
 import { orderApi } from '../../services/orderApi';
 import { notificationApi } from '../../services/notificationApi';
 import { OrderStatusBadge, VerificationBadge } from '../../components/ui/Badge';
-import { LineChart, DonutChart } from '../../components/ui/Charts';
+import { DonutChart } from '../../components/ui/Charts';
 import { ErrorState } from '../../components/ui/EmptyState';
 
 const FarmerDashboard = () => {
@@ -175,18 +175,8 @@ const FarmerDashboard = () => {
           </div>
 
           {/* CHARTS ROW */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-7">
-              <LineChart
-                title="Revenue & Delivery Growth (₹)"
-                data={orders.map((o) => o.totalAmount || 100).concat([350, 700, 1200])}
-                labels={['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul']}
-              />
-            </div>
-
-            <div className="lg:col-span-5">
-              <DonutChart title="Order Status Breakdown" data={donutData} />
-            </div>
+          <div>
+            <DonutChart title="Order Status Breakdown" data={donutData} />
           </div>
 
           {/* RECENT ORDERS TABLE */}

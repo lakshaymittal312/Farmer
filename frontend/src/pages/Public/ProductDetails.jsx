@@ -55,7 +55,7 @@ const ProductDetails = () => {
   const fetchReviews = async () => {
     try {
       const res = await reviewApi.getProductReviews(id);
-      if (res.data.success) setReviews(res.data.data || []);
+      if (res.data.success) setReviews(res.data.reviews || res.data.data || []);
     } catch (e) {
       // silent
     }
@@ -72,7 +72,6 @@ const ProductDetails = () => {
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
-    if (!newComment.trim()) return;
     setSubmittingReview(true);
     try {
       const res = await reviewApi.createReview({
@@ -334,7 +333,6 @@ const ProductDetails = () => {
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Share your feedback about the quality, freshness, and packaging of this produce..."
                 className="w-full bg-dark-bg border border-dark-border rounded-xl p-3 text-xs text-slate-100 focus:outline-none focus:border-primary-500"
-                required
               />
             </div>
 

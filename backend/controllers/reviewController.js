@@ -56,18 +56,31 @@ export const createReview = async (req, res) => {
 
     let orderId = order;
     if (!orderId) {
-      const deliveredOrder = await Order.findOne({
+      const deliveredOrders = await Order.find({
         buyer: buyerId,
         orderStatus: 'delivered',
         'items.product': product,
-      });
-      if (deliveredOrder) {
-        orderId = deliveredOrder._id;
-      } else {
+      }).sort({ createdAt: -1 });
+
+      if (deliveredOrders.length === 0) {
         return res.status(400).json({
           success: false,
           message: 'You can only review products from delivered orders that you have purchased.',
         });
+      }
+
+      const existingReviews = await Review.find({
+        buyer: buyerId,
+        product: product,
+      }).select('order');
+
+      const reviewedOrderIds = new Set(existingReviews.map((r) => r.order.toString()));
+      const unreviewedOrder = deliveredOrders.find((o) => !reviewedOrderIds.has(o._id.toString()));
+
+      if (unreviewedOrder) {
+        orderId = unreviewedOrder._id;
+      } else {
+        orderId = deliveredOrders[0]._id;
       }
     }
 
